@@ -5,10 +5,17 @@
     <Device id="GW5A-25A" package="MBGA121N" speed="1" partNumber="GW5A-LV25MG121NC1/I0"/>
     <FileList>
         <File path="C:\Gowin\proj\meta\src\biquad_df1.v" type="verilog"/>
+        <File path="C:\Gowin\proj\meta\src\dither_24_16.v" type="verilog"/>
         <File path="C:\Gowin\proj\meta\src\i2s_receiver.v" type="verilog"/>
         <File path="C:\Gowin\proj\meta\src\i2s_transmitter.v" type="verilog"/>
-        <File path="C:\Gowin\proj\meta\src\lpf_8k_4th.v" type="verilog"/>
+        <File path="C:\Gowin\proj\meta\src\rate_detect.v" type="verilog"/>
+        <File path="C:\Gowin\proj\meta\src\src_dupdrop.v" type="verilog"/>
         <File path="C:\Gowin\proj\meta\src\top.v" type="verilog"/>
+        <File path="C:\Gowin\proj\meta\src\src_interp.v" type="verilog"/>
+        <File path="C:\Gowin\proj\meta\src\dsd_pcm_decim2.v" type="verilog"/>
+        <File path="C:\Gowin\proj\meta\src\dsd_round_s32_s24.v" type="verilog"/>
+        <File path="C:\Gowin\proj\meta\src\dsd_to_pcm.v" type="verilog"/>
+        <File path="C:\Gowin\proj\meta\src\hb_sample_ram.v" type="verilog"/>
     </FileList>
     <OptionList>
         <Option type="disable_insert_pad" value="0"/>
