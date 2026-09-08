@@ -12,8 +12,11 @@ module dsd_round_s32_s24 (
     input  wire signed [31:0] in_s32,
     output wire signed [23:0] out_s24
 );
-    wire signed [32:0] tmp = $signed({in_s32[31], in_s32}) + 33'sd128;
-    assign out_s24 = (tmp > 33'sd8388607)  ? 24'h7FFFFF :
-                     (tmp < -33'sd8388608) ? 24'h800000 :
-                                              tmp[23:0];
+    // Round at the S24 boundary, then compare in the S24 scale. Comparing
+    // the unshifted Q31 value would clamp normal music levels to a rail.
+    wire signed [32:0] rounded_s24 =
+        ($signed({in_s32[31], in_s32}) + 33'sd128) >>> 8;
+    assign out_s24 = (rounded_s24 > 33'sd8388607)  ? 24'h7FFFFF :
+                     (rounded_s24 < -33'sd8388608) ? 24'h800000 :
+                                                      rounded_s24[23:0];
 endmodule

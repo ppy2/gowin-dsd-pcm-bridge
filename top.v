@@ -124,9 +124,8 @@ module top (
         .out_r(dsd_176_r)
     );
 
-    // S32 (DC gain 2^31, FS-to-FS) -> S24 by round-half-up (shared
-    // module, bit-identical in top and bench; see module header on why
-    // the add is 33-bit and why no saturation is needed).
+    // S32 (DC gain ~2^31, FS-to-FS) -> S24 by round-half-up with
+    // saturation (shared module, bit-identical in top and bench).
     wire signed [23:0] dsd_l24;
     wire signed [23:0] dsd_r24;
     dsd_round_s32_s24 round_l (.in_s32(dsd_176_l), .out_s24(dsd_l24));
