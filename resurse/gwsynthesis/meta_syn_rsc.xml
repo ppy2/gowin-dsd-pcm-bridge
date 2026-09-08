@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Module name="top" Register="6" Alu="5" Lut="3" T_Register="513(6)" T_Alu="4220(5)" T_Lut="548(3)" T_MULT27X36="14(0)">
+ <SubModule name="u_rx" Register="133" Lut="234" T_Register="133(133)" T_Lut="234(234)"/>
+ <SubModule name="u_filt" T_Register="242(0)" T_Alu="4215(0)" T_Lut="246(0)" T_MULT27X36="14(0)">
+  <SubModule name="bq1_l" Register="49" Alu="873" Lut="62" MULT27X36="4" T_Register="49(49)" T_Alu="873(873)" T_Lut="62(62)" T_MULT27X36="4(4)"/>
+  <SubModule name="bq1_r" Register="48" Alu="873" Lut="61" MULT27X36="4" T_Register="48(48)" T_Alu="873(873)" T_Lut="61(61)" T_MULT27X36="4(4)"/>
+  <SubModule name="bq2_l" Register="49" Alu="893" Lut="61" MULT27X36="4" T_Register="49(49)" T_Alu="893(893)" T_Lut="61(61)" T_MULT27X36="4(4)"/>
+  <SubModule name="bq2_r" Register="96" Alu="1576" Lut="62" MULT27X36="2" T_Register="96(96)" T_Alu="1576(1576)" T_Lut="62(62)" T_MULT27X36="2(2)"/>
+ </SubModule>
+ <SubModule name="u_tx" Register="132" Lut="65" T_Register="132(132)" T_Lut="65(65)"/>
+</Module>

@@ -1,0 +1,10 @@
+build/
+*.vvp
+*.log
+__pycache__/
+# Gowin regenerable binaries (reports + bitstream are kept)
+*.pr
+*.db
+*.bin
+*.binx
+*.vg
