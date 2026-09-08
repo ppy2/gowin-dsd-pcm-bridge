@@ -24,7 +24,6 @@
 // pushes at most one pair into history, resets phase to 0 on push.
 // Interpolator overshoot on hot transients SATURATES to S24 rails
 // (never wraps); steady full-scale sines never clip (verified tb_interp).
-`include "interp_coefs.vh"
 
 module src_interp (
     input  wire              clk,
@@ -40,6 +39,10 @@ module src_interp (
     output wire signed [23:0] out_r
 );
     localparam integer TAPN = 31;
+
+    // Coefficient ROM (module scope: Gowin Verilog-2001 forbids root-scope
+    // declarations, so the include lives here, not at file top).
+`include "interp_coefs.vh"
 
     // ---- proven X1/D2 path (also runs during X2/X4, output ignored) ----
     wire dd_valid;
