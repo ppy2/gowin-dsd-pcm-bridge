@@ -58,6 +58,7 @@ module tb_top;
         .i2s_bclk_in(i2s_bclk_in),
         .i2s_lrck_in(i2s_lrck_in),
         .i2s_sdata_in(i2s_sdata_in),
+        .dsd_on(1'b0),   // PCM bench: DSD path idle
         .i2s_bclk_out(i2s_bclk_out),
         .i2s_lrck_out(i2s_lrck_out),
         .i2s_sdata_out(i2s_sdata_out)

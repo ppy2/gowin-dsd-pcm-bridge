@@ -1,6 +1,10 @@
 `timescale 1ns/1ps
 // Tang Primer 25K (GW5A-LV25MG121NC1/I0).
-// Stage-1 SRC + 16-bit TPDF out. NO FIR (removed: it was a capability test).
+// PCM: Stage-1 SRC + 16-bit TPDF out (see below).
+// DSD (dsd_on high, Amanero-style): DSD64..512 -> dsd_to_pcm (352.8 kHz)
+// -> dsd_pcm_decim2 /2 (176.4 kHz) -> the same TPDF dither + I2S out.
+// DSD requires the 44.1-domain transport clock (MCLK 45.1584 MHz):
+// DSD rates are 44.1-family and the output grid is fixed MCLK/256.
 // I2S in (32b slots) -> rate_detect -> dup/drop to fixed grid -> TPDF
 // dither 24->16 -> I2S out (16b slots).
 // ONE image, two domains (ratio logic, MCLK-agnostic):
@@ -13,6 +17,7 @@ module top (
     input  wire i2s_bclk_in,
     input  wire i2s_lrck_in,
     input  wire i2s_sdata_in,
+    input  wire dsd_on,            // native-DSD enable (Amanero DSD-on)
     output wire i2s_bclk_out,
     output wire i2s_lrck_out,
     output wire i2s_sdata_out
@@ -73,12 +78,70 @@ module top (
         .out_r(src_r)
     );
 
+    // ---------------- native DSD path (Amanero-style) ----------------
+    // dsd_on high: BCLK pin = DSD bit clock (2.8224..22.5792 MHz),
+    // SDATA = DATA1, LRCLK = DATA2. The PCM path above keeps running
+    // (its LRCK input is DATA2 garbage in DSD mode); the mux only
+    // switches the data source, so mode flips are glitch-free.
+    reg [1:0] dsd_on_sync;
+    always @(posedge mclk_in or negedge rst_n) begin
+        if (!rst_n)
+            dsd_on_sync <= 2'b00;
+        else
+            dsd_on_sync <= {dsd_on_sync[0], dsd_on};
+    end
+    wire dsd_active = dsd_on_sync[1];
+
+    wire dsd_valid_352;
+    wire signed [31:0] dsd_352_l;
+    wire signed [31:0] dsd_352_r;
+
+    dsd_to_pcm dsd_stage1 (
+        .mclk(mclk_in),
+        .rst_n(rst_n),
+        .dsd_on(dsd_on),
+        .dsd_clk_in(i2s_bclk_in),
+        .dsd_data1(i2s_sdata_in),
+        .dsd_data2_alt(1'b0),   // Amanero style: DATA2 rides the LRCLK pin
+        .lrck_in(i2s_lrck_in),
+        .sample_valid(dsd_valid_352),
+        .sample_l(dsd_352_l),
+        .sample_r(dsd_352_r)
+    );
+
+    wire dsd_valid_176;
+    wire signed [31:0] dsd_176_l;
+    wire signed [31:0] dsd_176_r;
+
+    dsd_pcm_decim2 dsd_stage2 (
+        .clk(mclk_in),
+        .rst_n(rst_n),
+        .in_valid(dsd_valid_352),
+        .in_l(dsd_352_l),
+        .in_r(dsd_352_r),
+        .out_valid(dsd_valid_176),
+        .out_l(dsd_176_l),
+        .out_r(dsd_176_r)
+    );
+
+    // S32 (DC gain 2^31, FS-to-FS) -> S24 by round-half-up (shared
+    // module, bit-identical in top and bench; see module header on why
+    // the add is 33-bit and why no saturation is needed).
+    wire signed [23:0] dsd_l24;
+    wire signed [23:0] dsd_r24;
+    dsd_round_s32_s24 round_l (.in_s32(dsd_176_l), .out_s24(dsd_l24));
+    dsd_round_s32_s24 round_r (.in_s32(dsd_176_r), .out_s24(dsd_r24));
+
+    wire src_mux_valid = dsd_active ? dsd_valid_176 : src_valid;
+    wire signed [23:0] src_mux_l = dsd_active ? dsd_l24 : src_l;
+    wire signed [23:0] src_mux_r = dsd_active ? dsd_r24 : src_r;
+
     dither_24_16 u_dith (
         .clk(mclk_in),
         .rst_n(rst_n),
-        .in_valid(src_valid),
-        .in_l(src_l),
-        .in_r(src_r),
+        .in_valid(src_mux_valid),
+        .in_l(src_mux_l),
+        .in_r(src_mux_r),
         .out_valid(dith_valid),
         .out_l(dith_l),
         .out_r(dith_r)
