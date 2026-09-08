@@ -59,7 +59,7 @@ module top (
         .in_idle(rate_idle)
     );
 
-    src_dupdrop u_src (
+    src_interp u_src (
         .clk(mclk_in),
         .rst_n(rst_n),
         .pair_valid(pair_valid),
