@@ -40,9 +40,14 @@ module src_interp (
 );
     localparam integer TAPN = 31;
 
-    // Coefficient ROM (module scope: Gowin Verilog-2001 forbids root-scope
-    // declarations, so the include lives here, not at file top).
+    // Coefficient ROM (module scope + guarded body: Gowin Verilog-2001
+    // forbids root-scope declarations (EX3209) and also compiles the .vh
+    // itself as a standalone unit — the guard makes the standalone compile
+    // empty, while here it expands to the function. `undef right after so
+    // the macro never leaks into other units regardless of file order).
+`define SRC_INTERP_ROM_BODY
 `include "interp_coefs.vh"
+`undef SRC_INTERP_ROM_BODY
 
     // ---- proven X1/D2 path (also runs during X2/X4, output ignored) ----
     wire dd_valid;
