@@ -139,31 +139,126 @@ module top (
     wire signed [23:0] src_mux_l = dsd_active ? dsd_r24 : src_l;
     wire signed [23:0] src_mux_r = dsd_active ? dsd_l24 : src_r;
 
-    // Switch blanking: the newly-selected path is not ready at the mux
-    // edge (DSD: ~1 ms acquisition + FIR window fill from zero; PCM:
-    // rate relock + history flush of DSD-era garbage). Switching bare
-    // emits a frozen-DC + rail-ramp burst — the loud switch transient.
-    // Blank 2^18 MCLK (~5.8 ms @45.1584) with exactly one zero pair per
-    // output frame (dithered silence, clocks keep running); the new path
-    // settles underneath. Also covers POR (blank init, not an edge).
-    reg [17:0] blank;
-    reg dsd_active_d;
+    // Click-free source switching: a hard music<->silence step is itself
+    // a full-scale click, so blanking alone is not enough. Envelope:
+    //   EDGE -> FADE_OUT the still-served source over 128 output frames
+    //           (~0.7 ms; the old clocks are usually already dying, the
+    //           ramp covers the cases they linger) ->
+    //           flip the mux, HOLD zeros 2^18 MCLK (~5.8 ms @45.1584) while
+    //           DSD acq+FIR-fill / PCM relock+flush settle ->
+    //           FADE_IN the new source over 1024 frames (~5.3 ms) -> STEADY.
+    // Zero-fill (one zero pair per output frame) covers valid gaps; clocks
+    // never stop. POR starts in HOLD (also silences power-up garbage).
+    // Gain mult is 24x11 bit-exact at full gain (x1024>>10 = x1); Yosys
+    // gate expects 5 $mul (3 DSP path + 2 fade), LUT-mapped, timing-clean.
+    localparam [1:0] ST_STEADY = 2'd0, ST_OUT = 2'd1,
+                     ST_HOLD = 2'd2, ST_IN = 2'd3;
+    reg [1:0] sw_state;
+    reg mux_frozen;      // source actually served (flips only at gain 0)
+    reg [10:0] fgain;    // 0..1024
+    reg [17:0] hold;
     always @(posedge mclk_in or negedge rst_n) begin
         if (!rst_n) begin
-            blank <= 18'h3FFFF;
-            dsd_active_d <= 1'b0;
+            sw_state <= ST_HOLD; mux_frozen <= 1'b0;
+            fgain <= 11'd0; hold <= 18'h3FFFF;
         end else begin
-            dsd_active_d <= dsd_active;
-            if (dsd_active != dsd_active_d)
-                blank <= 18'h3FFFF;
-            else if (blank != 18'd0)
-                blank <= blank - 18'd1;
+            case (sw_state)
+                ST_STEADY: begin
+                    fgain <= 11'd1024;
+                    if (dsd_active != mux_frozen)
+                        sw_state <= ST_OUT;
+                end
+                ST_OUT: begin
+                    // Edge here just keeps fading: the flip at gain 0
+                    // always takes the latest dsd_active.
+                    if (frame_tick) begin
+                        if (fgain <= 11'd8) begin
+                            fgain <= 11'd0;
+                            mux_frozen <= dsd_active;
+                            hold <= 18'h3FFFF;
+                            sw_state <= ST_HOLD;
+                        end else
+                            fgain <= fgain - 11'd8;
+                    end
+                end
+                ST_HOLD: begin
+                    if (dsd_active != mux_frozen) begin
+                        mux_frozen <= dsd_active;
+                        hold <= 18'h3FFFF;
+                    end else if (hold != 18'd0)
+                        hold <= hold - 18'd1;
+                    else
+                        sw_state <= ST_IN;
+                end
+                ST_IN: begin
+                    if (dsd_active != mux_frozen)
+                        sw_state <= ST_OUT;
+                    else if (frame_tick) begin
+                        if (fgain >= 11'd1024) begin
+                            fgain <= 11'd1024;
+                            sw_state <= ST_STEADY;
+                        end else
+                            fgain <= fgain + 11'd1;
+                    end
+                end
+            endcase
         end
     end
-    wire blanking = (blank != 18'd0);
-    wire dith_in_valid = blanking ? frame_tick : src_mux_valid;
-    wire signed [23:0] dith_in_l = blanking ? 24'sd0 : src_mux_l;
-    wire signed [23:0] dith_in_r = blanking ? 24'sd0 : src_mux_r;
+
+    // Frozen source (with the measured DSD L/R swap) + gain.
+    // |fz|*1024>>10 never overflows S24 (worst case -FS maps to -FS).
+    wire signed [23:0] fz_l = mux_frozen ? dsd_r24 : src_l;
+    wire signed [23:0] fz_r = mux_frozen ? dsd_l24 : src_r;
+    wire fz_v = mux_frozen ? dsd_valid_176 : src_valid;
+    // Coast register: the last sample actually emitted to the dither.
+    // Fading the live source breaks when the old path collapses mid-ramp
+    // (in_idle zeros arrive as *valid* data a few frames after the pins
+    // freeze, DSD valids stop with the bit clock): the ramp would step
+    // off that cliff. Coasting the last emitted sample is continuous by
+    // construction in every case — live, collapsing, or long-dead
+    // (then it equals what the TX already repeats, and fades that out).
+    // Tracked in STEADY/IN, frozen in OUT/HOLD. Same two mults.
+    reg signed [23:0] coast_l, coast_r;
+    always @(posedge mclk_in or negedge rst_n) begin
+        if (!rst_n) begin
+            coast_l <= 24'sd0; coast_r <= 24'sd0;
+        end else if (dith_in_valid &&
+                     ((sw_state == ST_STEADY) || (sw_state == ST_IN))) begin
+            coast_l <= dith_in_l; coast_r <= dith_in_r;
+        end
+    end
+    wire signed [23:0] m_in_l =
+        (sw_state == ST_OUT) ? coast_l : fz_l;
+    wire signed [23:0] m_in_r =
+        (sw_state == ST_OUT) ? coast_r : fz_r;
+    wire signed [34:0] fprod_l = $signed(m_in_l) * $signed({1'b0, fgain});
+    wire signed [34:0] fprod_r = $signed(m_in_r) * $signed({1'b0, fgain});
+    wire signed [23:0] sc_l = fprod_l[33:10];
+    wire signed [23:0] sc_r = fprod_r[33:10];
+
+    wire filling = (sw_state != ST_STEADY);
+    // Zero-fill only when the served source is actually silent this
+    // frame: a fill between live valids would chop music with zeros
+    // (full-scale steps — the bench caught exactly that). vseen tracks
+    // whether any source valid arrived since the previous frame tick.
+    reg vseen;
+    always @(posedge mclk_in or negedge rst_n) begin
+        if (!rst_n)
+            vseen <= 1'b0;
+        else if (fz_v)
+            vseen <= 1'b1;
+        else if (frame_tick)
+            vseen <= 1'b0;
+    end
+    wire fill_tick = filling & frame_tick & ~vseen & ~fz_v;
+    wire dith_in_valid = fz_v | fill_tick;
+    // OUT fills coast on the held sample (never 0 — that step is the
+    // click); anywhere else a fill is true silence. HOLD needs no case:
+    // gain is 0 there so sc is 0 already.
+    wire signed [23:0] dith_in_l =
+        (sw_state == ST_OUT) ? sc_l : (fz_v ? sc_l : 24'sd0);
+    wire signed [23:0] dith_in_r =
+        (sw_state == ST_OUT) ? sc_r : (fz_v ? sc_r : 24'sd0);
 
     dither_24_16 u_dith (
         .clk(mclk_in),

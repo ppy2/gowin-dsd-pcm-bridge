@@ -224,13 +224,13 @@ module tb_dsd_path;
             repeat (100) @(posedge clk);
 
             // ---- 5. top smoke: DSD64 DC ones through mux+dither+TX --
-            // 30000 bits = 480k mclk: covers the 262k switch blank + the
-            // acquisition + both settles.
+            // 50000 bits = 800k mclk: covers fade-out + hold + fade-in
+            // + acquisition + both settles.
             top_dsd_on = 1'b1;
             fork
                 begin
                     integer kk, hh;
-                    for (kk = 0; kk < 30000; kk = kk + 1) begin
+                    for (kk = 0; kk < 50000; kk = kk + 1) begin
                         top_sd = 1'b1; top_lr = 1'b1;
                         top_bclk = 1'b0;
                         for (hh = 0; hh < 8; hh = hh + 1) @(posedge clk);
@@ -240,8 +240,9 @@ module tb_dsd_path;
                     top_bclk = 1'b0;
                 end
                 begin
-                    // wait ~400k mclk (blank + acq + both settles), then check
-                    repeat (400000) @(posedge clk);
+                    // wait ~700k mclk (fades + hold + acq + settles),
+                    // then check
+                    repeat (700000) @(posedge clk);
                     begin : vchk
                         integer vc, cc;
                         vc = 0;

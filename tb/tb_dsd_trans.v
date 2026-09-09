@@ -74,6 +74,7 @@ module tb_dsd_trans;
 
     integer err = 0;
     integer vc, cc;
+    integer ms_b, nz_b, ms_c, nz_c;
     reg signed [23:0] acc_l, acc_r;
     integer n;
 
@@ -100,12 +101,56 @@ module tb_dsd_trans;
         end
     endtask
 
+    // Envelope monitor on the post-fade dither input: largest step
+    // between consecutive emitted samples (a hard music<->silence step
+    // is ~4M+ LSB24 = the click) + zero samples seen (the hold).
+    task env_check;
+        input integer cycles;
+        output integer maxstep;
+        output integer nzeros;
+        integer c, d;
+        reg signed [23:0] prev_l, prev_r;
+        reg have_prev;
+        begin
+            maxstep = 0; nzeros = 0; have_prev = 1'b0;
+            for (c = 0; c < cycles; c = c + 1) begin
+                @(posedge mclk); #1;
+                if (top_i.u_dith.in_valid === 1'b1) begin
+                    if ($signed(top_i.u_dith.in_l) === 0 &&
+                        $signed(top_i.u_dith.in_r) === 0)
+                        nzeros = nzeros + 1;
+                    if (have_prev) begin
+                        d = $signed(top_i.u_dith.in_l) - $signed(prev_l);
+                        if (d < 0) d = -d;
+                        if (d > maxstep) maxstep = d;
+                        d = $signed(top_i.u_dith.in_r) - $signed(prev_r);
+                        if (d < 0) d = -d;
+                        if (d > maxstep) maxstep = d;
+                    end
+                    prev_l = top_i.u_dith.in_l;
+                    prev_r = top_i.u_dith.in_r;
+                    have_prev = 1'b1;
+                end
+            end
+        end
+    endtask
+
     initial begin
         repeat (200) @(posedge mclk); // POR + settle
 
-        // ---- A. PCM baseline ----
+        // ---- A. PCM baseline (wait for the POR hold+fade-in) ----
         pcm_run = 1'b1;
-        repeat (400*256) @(posedge mclk); // ~400 frames lock + flush
+        begin : lockwait_a
+            integer wc;
+            wc = 0;
+            while (top_i.sw_state !== 2'd0 && wc < 2000000) begin
+                @(posedge mclk); wc = wc + 1;
+            end
+            if (top_i.sw_state !== 2'd0) begin
+                $display("FAIL: no STEADY-A"); err = err + 1;
+            end
+        end
+        repeat (40*256) @(posedge mclk); // rate lock + SRC flush
         sniff_mux(vc, acc_l, acc_r);
         $display("PCM-A: valids=%0d/512 meanL=%0d meanR=%0d", vc, $signed(acc_l), $signed(acc_r));
         if (vc != 2) begin $display("FAIL: PCM-A rate"); err = err + 1; end
@@ -113,26 +158,27 @@ module tb_dsd_trans;
         if (!($signed(acc_r) < -4000000)) begin $display("FAIL: PCM-A R not -0.5FS"); err = err + 1; end
 
         // ---- B. DSD: SDATA=1, LRCLK=0 ----
-        // 24000 bits = 384k mclk: covers the 262k switch blank + the
-        // ~1 ms acquisition + FIR window fill.
+        // Full switch envelope under observation (fade-out 128f + hold
+        // 1024f + fade-in 1024f + DSD acq/fill ≈ 650k mclk; 44000 bits
+        // = 704k): no click-step, real silent hold inside.
         pcm_run = 1'b0;
         repeat (10) @(posedge mclk);
         dsd_on = 1'b1;
-        // Switch blank must hold dither input at zero while settling.
-        begin : blankchk_b
-            integer c, nz;
-            nz = 0;
-            for (c = 0; c < 20000; c = c + 1) begin
-                @(posedge mclk); #1;
-                if (top_i.u_dith.in_valid === 1'b1) begin
-                    if ($signed(top_i.u_dith.in_l) !== 0 ||
-                        $signed(top_i.u_dith.in_r) !== 0) nz = nz + 1;
+        fork
+            dsd_dc(44000, 1'b1, 1'b0);
+            begin
+                env_check(700000, ms_b, nz_b);
+                $display("PCM->DSD env: maxstep=%0d zeros=%0d", ms_b, nz_b);
+                if (ms_b > 200000) begin
+                    $display("FAIL: PCM->DSD step too big (click)");
+                    err = err + 1;
+                end
+                if (nz_b < 500) begin
+                    $display("FAIL: PCM->DSD no silent hold");
+                    err = err + 1;
                 end
             end
-            if (nz != 0) begin $display("FAIL: PCM->DSD blank not silent (%0d)", nz); err = err + 1; end
-            else $display("PCM->DSD blank ok (zeros during settle)");
-        end
-        dsd_dc(24000, 1'b1, 1'b0);
+        join
         sniff_mux(vc, acc_l, acc_r);
         $display("DSD-B: valids=%0d/512 meanL=%0d meanR=%0d", vc, $signed(acc_l), $signed(acc_r));
         if (vc != 2) begin $display("FAIL: DSD-B rate"); err = err + 1; end
@@ -142,27 +188,24 @@ module tb_dsd_trans;
         if (!($signed(acc_r) > 8000000)) begin $display("FAIL: DSD-B R not +FS (swap?)"); err = err + 1; end
         else $display("DSD-B swap ok (SDATA=1 -> R+, LRCLK=0 -> L-)");
 
-        // ---- C. back to PCM ----
-        // 1600 frames = 410k mclk: covers the 262k switch blank + the
-        // rate relock + interp history flush.
+        // ---- C. back to PCM (envelope observed the same way) ----
         dsd_on = 1'b0;
-        // Same blank check on the way back (mechanism is shared).
-        begin : blankchk_c
-            integer c, nz;
-            nz = 0;
-            for (c = 0; c < 20000; c = c + 1) begin
-                @(posedge mclk); #1;
-                if (top_i.u_dith.in_valid === 1'b1) begin
-                    if ($signed(top_i.u_dith.in_l) !== 0 ||
-                        $signed(top_i.u_dith.in_r) !== 0) nz = nz + 1;
+        pcm_run = 1'b1;
+        fork
+            begin repeat (720000) @(posedge mclk); end
+            begin
+                env_check(700000, ms_c, nz_c);
+                $display("DSD->PCM env: maxstep=%0d zeros=%0d", ms_c, nz_c);
+                if (ms_c > 200000) begin
+                    $display("FAIL: DSD->PCM step too big (click)");
+                    err = err + 1;
+                end
+                if (nz_c < 500) begin
+                    $display("FAIL: DSD->PCM no silent hold");
+                    err = err + 1;
                 end
             end
-            if (nz != 0) begin $display("FAIL: DSD->PCM blank not silent (%0d)", nz); err = err + 1; end
-            else $display("DSD->PCM blank ok (zeros during settle)");
-        end
-        repeat (10) @(posedge mclk);
-        pcm_run = 1'b1;
-        repeat (1600*256) @(posedge mclk);
+        join
         sniff_mux(vc, acc_l, acc_r);
         $display("PCM-C: valids=%0d/512 meanL=%0d meanR=%0d", vc, $signed(acc_l), $signed(acc_r));
         if (vc != 2) begin $display("FAIL: PCM-C rate (no resume)"); err = err + 1; end
@@ -174,9 +217,9 @@ module tb_dsd_trans;
         $finish;
     end
 
-    // Watchdog
+    // Watchdog (A ~50k + B 704k + C 720k mclk + sniffs + margin)
     initial begin
-        repeat (3000000) @(posedge mclk);
+        repeat (8000000) @(posedge mclk);
         $display("WATCHDOG hang");
         $finish;
     end

@@ -182,7 +182,19 @@ module tb_top;
 
     initial begin
         repeat (200) @(posedge mclk); // POR + settle
-        repeat (1024 * 300) @(posedge mclk); // grids lock, filter flush
+        // POR starts the switch machine in HOLD: wait for STEADY, then
+        // a short lock (rate detect needs 3 frames at X1).
+        begin : lockwait
+            integer wc;
+            wc = 0;
+            while (dut.sw_state !== 2'd0 && wc < 2000000) begin
+                @(posedge mclk); wc = wc + 1;
+            end
+            if (dut.sw_state !== 2'd0) begin
+                $display("FAIL: no STEADY"); err = err + 1;
+            end
+        end
+        repeat (1024 * 30) @(posedge mclk); // grids lock, filter flush
 
         check_framing;
 
