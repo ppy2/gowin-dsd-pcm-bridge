@@ -245,7 +245,37 @@ module top #(
     wire signed [23:0] m_in_r =
         (sw_state == ST_OUT) ? coast_r : fz_r;
     wire signed [34:0] fprod_l = $signed(m_in_l) * $signed({1'b0, fgain});
-    wire signed [34:0] fprod_r = $signed(m_in_r) * $signed({1'b0, fgain});
+    // Fade-R WITHOUT DSP (manual LUT shift-add): the inferred 24x11
+    // mult-R outputs exact zero on silicon while the identical mult-L
+    // plays (DSP-mapping/config-spot class — sim-blind, all reports
+    // perfect). Bit-identical to $mul by construction: fgain <= 1024
+    // < 2^11, the true product fits 34 bits, and every 35-bit
+    // intermediate add is exact (wraps mod 2^35 like $mul low bits).
+    // Gowin report MUST show top-level DSP 2->1 after this change;
+    // if it stays 2, the tree got re-packed and the dodge failed.
+    wire [10:0] fgu = fgain;
+    wire signed [34:0] rbase = {{11{m_in_r[23]}}, m_in_r};
+    wire signed [34:0] rpp0 = fgu[0]  ? rbase : 35'sd0;
+    wire signed [34:0] rpp1 = fgu[1]  ? (rbase <<< 1)  : 35'sd0;
+    wire signed [34:0] rpp2 = fgu[2]  ? (rbase <<< 2)  : 35'sd0;
+    wire signed [34:0] rpp3 = fgu[3]  ? (rbase <<< 3)  : 35'sd0;
+    wire signed [34:0] rpp4 = fgu[4]  ? (rbase <<< 4)  : 35'sd0;
+    wire signed [34:0] rpp5 = fgu[5]  ? (rbase <<< 5)  : 35'sd0;
+    wire signed [34:0] rpp6 = fgu[6]  ? (rbase <<< 6)  : 35'sd0;
+    wire signed [34:0] rpp7 = fgu[7]  ? (rbase <<< 7)  : 35'sd0;
+    wire signed [34:0] rpp8 = fgu[8]  ? (rbase <<< 8)  : 35'sd0;
+    wire signed [34:0] rpp9 = fgu[9]  ? (rbase <<< 9)  : 35'sd0;
+    wire signed [34:0] rpp10 = fgu[10] ? (rbase <<< 10) : 35'sd0;
+    wire signed [34:0] rs01 = rpp0 + rpp1;
+    wire signed [34:0] rs23 = rpp2 + rpp3;
+    wire signed [34:0] rs45 = rpp4 + rpp5;
+    wire signed [34:0] rs67 = rpp6 + rpp7;
+    wire signed [34:0] rs89 = rpp8 + rpp9;
+    wire signed [34:0] rc1 = rs01 + rs23;
+    wire signed [34:0] rc2 = rs45 + rs67;
+    wire signed [34:0] rc3 = rs89 + rpp10;
+    wire signed [34:0] rc4 = rc1 + rc2;
+    wire signed [34:0] fprod_r = rc4 + rc3;
     wire signed [23:0] sc_l = fprod_l[33:10];
     wire signed [23:0] sc_r = fprod_r[33:10];
 
