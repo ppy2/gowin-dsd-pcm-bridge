@@ -1,5 +1,7 @@
 # FPGA SRC для Tang Primer 25K (GW5A-LV25MG121NC1/I0)
 
+![datapath](docs/block.svg)
+
 Передискретизация PCM и приём DSD для ЦАП без оверсемплинга (TDA1541).
 Один образ на оба clock-домена (логика на отношениях к MCLK).
 
