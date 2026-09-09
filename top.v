@@ -12,7 +12,13 @@
 //   48/96/192/384 kHz @MCLK 49.152 MHz          -> 192 kHz out (MCLK/256)
 // x1 = pass, x2/x4 = duplicate, x8 = drop every 2nd pair.
 // All logic runs on mclk_in. No external reset: power-on reset counter.
-module top (
+module top #(
+    // DIAG_SWAP_TX=1: exchange L/R into the output transmitter (silicon
+    // channel-bisect diagnostic: if the silent slot moves, the backend
+    // emits both slots and the zero comes from the frontend; if silence
+    // stays, the TX right-half path is guilty). 0 = normal operation.
+    parameter DIAG_SWAP_TX = 1'b0
+) (
     input  wire mclk_in,
     input  wire i2s_bclk_in,
     input  wire i2s_lrck_in,
@@ -282,8 +288,8 @@ module top (
         .clk(mclk_in),
         .rst_n(rst_n),
         .in_valid(dith_valid),
-        .in_l(dith_l),
-        .in_r(dith_r),
+        .in_l(DIAG_SWAP_TX ? dith_r : dith_l),
+        .in_r(DIAG_SWAP_TX ? dith_l : dith_r),
         .bclk_out(i2s_bclk_out),
         .lrck_out(i2s_lrck_out),
         .sdata_out(i2s_sdata_out),
