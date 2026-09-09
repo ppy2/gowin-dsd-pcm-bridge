@@ -131,16 +131,46 @@ module top (
     dsd_round_s32_s24 round_l (.in_s32(dsd_176_l), .out_s24(dsd_l24));
     dsd_round_s32_s24 round_r (.in_s32(dsd_176_r), .out_s24(dsd_r24));
 
+    // Measured on hardware (2026-09-09): this transport delivers the RIGHT
+    // channel on SDATA and LEFT on LRCLK in DSD mode (opposite of the
+    // DATA1=left assumption in dsd_to_pcm.v). Swapped here so DSD L/R
+    // matches PCM L/R. dsd_to_pcm.v itself stays verbatim with /mnt/sdb/fpga.
     wire src_mux_valid = dsd_active ? dsd_valid_176 : src_valid;
-    wire signed [23:0] src_mux_l = dsd_active ? dsd_l24 : src_l;
-    wire signed [23:0] src_mux_r = dsd_active ? dsd_r24 : src_r;
+    wire signed [23:0] src_mux_l = dsd_active ? dsd_r24 : src_l;
+    wire signed [23:0] src_mux_r = dsd_active ? dsd_l24 : src_r;
+
+    // Switch blanking: the newly-selected path is not ready at the mux
+    // edge (DSD: ~1 ms acquisition + FIR window fill from zero; PCM:
+    // rate relock + history flush of DSD-era garbage). Switching bare
+    // emits a frozen-DC + rail-ramp burst — the loud switch transient.
+    // Blank 2^18 MCLK (~5.8 ms @45.1584) with exactly one zero pair per
+    // output frame (dithered silence, clocks keep running); the new path
+    // settles underneath. Also covers POR (blank init, not an edge).
+    reg [17:0] blank;
+    reg dsd_active_d;
+    always @(posedge mclk_in or negedge rst_n) begin
+        if (!rst_n) begin
+            blank <= 18'h3FFFF;
+            dsd_active_d <= 1'b0;
+        end else begin
+            dsd_active_d <= dsd_active;
+            if (dsd_active != dsd_active_d)
+                blank <= 18'h3FFFF;
+            else if (blank != 18'd0)
+                blank <= blank - 18'd1;
+        end
+    end
+    wire blanking = (blank != 18'd0);
+    wire dith_in_valid = blanking ? frame_tick : src_mux_valid;
+    wire signed [23:0] dith_in_l = blanking ? 24'sd0 : src_mux_l;
+    wire signed [23:0] dith_in_r = blanking ? 24'sd0 : src_mux_r;
 
     dither_24_16 u_dith (
         .clk(mclk_in),
         .rst_n(rst_n),
-        .in_valid(src_mux_valid),
-        .in_l(src_mux_l),
-        .in_r(src_mux_r),
+        .in_valid(dith_in_valid),
+        .in_l(dith_in_l),
+        .in_r(dith_in_r),
         .out_valid(dith_valid),
         .out_l(dith_l),
         .out_r(dith_r)

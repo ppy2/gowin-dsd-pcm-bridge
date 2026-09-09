@@ -180,7 +180,9 @@ module tb_dsd_path;
             dc_rate(2, 1'b1, 24'h7FFFFF);    // DSD512 +FS
             dc_rate(2, 1'b0, 24'h800000);    // DSD512 -FS
 
-            // ---- 3. routing: L=1 / R=0 (DATA2 must come from LRCLK) --
+            // ---- 3. routing (UNIT level, no top swap): SDATA=1 -> stage-L=+FS,
+            // LRCLK=0 -> stage-R=-FS. The L/R swap to match PCM lives in
+            // top.v and is locked by tb_dsd_trans, not here. --
             dsd_on_u = 1'b1;
             nbits = 4400;
             fork
@@ -222,11 +224,13 @@ module tb_dsd_path;
             repeat (100) @(posedge clk);
 
             // ---- 5. top smoke: DSD64 DC ones through mux+dither+TX --
+            // 30000 bits = 480k mclk: covers the 262k switch blank + the
+            // acquisition + both settles.
             top_dsd_on = 1'b1;
             fork
                 begin
                     integer kk, hh;
-                    for (kk = 0; kk < 8000; kk = kk + 1) begin
+                    for (kk = 0; kk < 30000; kk = kk + 1) begin
                         top_sd = 1'b1; top_lr = 1'b1;
                         top_bclk = 1'b0;
                         for (hh = 0; hh < 8; hh = hh + 1) @(posedge clk);
@@ -236,8 +240,8 @@ module tb_dsd_path;
                     top_bclk = 1'b0;
                 end
                 begin
-                    // wait ~110k mclk (acq + both settles), then check
-                    repeat (110000) @(posedge clk);
+                    // wait ~400k mclk (blank + acq + both settles), then check
+                    repeat (400000) @(posedge clk);
                     begin : vchk
                         integer vc, cc;
                         vc = 0;
