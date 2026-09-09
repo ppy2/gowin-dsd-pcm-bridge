@@ -57,3 +57,7 @@ top.v меняет их местами под PCM-раскладку.
 
 `make verify` — 14 бенчей icarus + elaboration yosys. Нужны icarus-verilog,
 yosys, python3+scipy. Должен быть зелёным до каждой прошивки.
+
+## Лицензия
+
+MIT — делай что хочешь, сохраняй копирайт. См. [LICENSE](LICENSE).
