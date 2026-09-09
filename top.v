@@ -334,23 +334,70 @@ module top #(
     wire signed [23:0] dith_in_r =
         (sw_state == ST_OUT) ? sc_r : (fz_v ? sc_r : 24'sd0);
 
+    // Timing pipe (P&R 2026-09: worst setup 0.039 ns @49.152 — the fade
+    // mult/tree and the dither adder chained in one MCLK). One register
+    // stage on data+valid splits ~23 ns into ~16+~7. Bit-identical
+    // stream, +1 MCLK latency (1/256 of a frame); valid/data stay paired.
+    reg pd_v;
+    reg signed [23:0] pd_l, pd_r;
+    always @(posedge mclk_in or negedge rst_n) begin
+        if (!rst_n) begin
+            pd_v <= 1'b0; pd_l <= 24'sd0; pd_r <= 24'sd0;
+        end else begin
+            pd_v <= dith_in_valid;
+            pd_l <= dith_in_l;
+            pd_r <= dith_in_r;
+        end
+    end
+
     dither_24_16 u_dith (
         .clk(mclk_in),
         .rst_n(rst_n),
-        .in_valid(dith_in_valid),
-        .in_l(dith_in_l),
-        .in_r(dith_in_r),
+        .in_valid(pd_v),
+        .in_l(pd_l),
+        .in_r(pd_r),
         .out_valid(dith_valid),
         .out_l(dith_l),
         .out_r(dith_r)
     );
 
+    // Digital-silence auto-mute: the TPDF dither turns driven-zero stops
+    // into a +-1 LSB flow (words 0000/FFFF/0001) — visible dirt on the LA,
+    // inaudible but ugly (and a NOS DAC toggles its LSB). After 4095
+    // consecutive zero pairs (~23 ms) force exact 0x0000 after the dither;
+    // any nonzero pair unmutes instantly. Starts muted (POR). A sine
+    // makes only 1-2 zero samples per crossing, music never trips it;
+    // the switch HOLD (~1024 zero pairs) stays below the threshold, so
+    // the fade envelope is untouched. Feeds both I2S and TDA outputs.
+    reg [11:0] zcnt;
+    reg        muted;
+    always @(posedge mclk_in or negedge rst_n) begin
+        if (!rst_n) begin
+            zcnt <= 12'd0;
+            muted <= 1'b1;
+        end else if (pd_v) begin
+            if (pd_l == 24'sd0 && pd_r == 24'sd0) begin
+                if (zcnt != 12'd4095)
+                    zcnt <= zcnt + 12'd1;
+                else
+                    muted <= 1'b1;
+            end else begin
+                zcnt <= 12'd0;
+                muted <= 1'b0;
+            end
+        end
+    end
+    // Sense pre-dither exact zeros (pd_*), gate post-dither words.
+    // Sensing post-dither would never fire (TPDF of zero is +-1).
+    wire signed [15:0] out_l = muted ? 16'sd0 : dith_l;
+    wire signed [15:0] out_r = muted ? 16'sd0 : dith_r;
+
     i2s_transmitter u_tx (
         .clk(mclk_in),
         .rst_n(rst_n),
         .in_valid(dith_valid),
-        .in_l(DIAG_SWAP_TX ? dith_r : dith_l),
-        .in_r(DIAG_SWAP_TX ? dith_l : dith_r),
+        .in_l(DIAG_SWAP_TX ? out_r : out_l),
+        .in_r(DIAG_SWAP_TX ? out_l : out_r),
         .bclk_out(i2s_bclk_out),
         .lrck_out(i2s_lrck_out),
         .sdata_out(i2s_sdata_out),
@@ -364,8 +411,8 @@ module top #(
         .clk(mclk_in),
         .rst_n(rst_n),
         .in_valid(dith_valid),
-        .in_l(dith_l),
-        .in_r(dith_r),
+        .in_l(out_l),
+        .in_r(out_r),
         .frame_tick(frame_tick),
         .bck_out(tda_bck_out),
         .le_out(tda_le_out),
