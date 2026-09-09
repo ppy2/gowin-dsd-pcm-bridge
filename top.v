@@ -197,8 +197,7 @@ module top #(
     //           FADE_IN the new source over 1024 frames (~5.3 ms) -> STEADY.
     // Zero-fill (one zero pair per output frame) covers valid gaps; clocks
     // never stop. POR starts in HOLD (also silences power-up garbage).
-    // Gain mult is 24x11 bit-exact at full gain (x1024>>10 = x1); Yosys
-    // gate expects 5 $mul (3 DSP path + 2 fade), LUT-mapped, timing-clean.
+    // Gain mult is 24x11 bit-exact at full gain (x1024>>10 = x1).
     localparam [1:0] ST_STEADY = 2'd0, ST_OUT = 2'd1,
                      ST_HOLD = 2'd2, ST_IN = 2'd3;
     reg [1:0] sw_state;
@@ -279,16 +278,41 @@ module top #(
         (sw_state == ST_OUT) ? coast_l : fz_l;
     wire signed [23:0] m_in_r =
         (sw_state == ST_OUT) ? coast_r : fz_r;
-    wire signed [34:0] fprod_l = $signed(m_in_l) * $signed({1'b0, fgain});
-    // Fade-R WITHOUT DSP (manual LUT shift-add): the inferred 24x11
-    // mult-R outputs exact zero on silicon while the identical mult-L
-    // plays (DSP-mapping/config-spot class — sim-blind, all reports
-    // perfect). Bit-identical to $mul by construction: fgain <= 1024
-    // < 2^11, the true product fits 34 bits, and every 35-bit
-    // intermediate add is exact (wraps mod 2^35 like $mul low bits).
-    // Gowin report MUST show top-level DSP 2->1 after this change;
-    // if it stays 2, the tree got re-packed and the dodge failed.
+    // Fade mults WITHOUT DSP (manual LUT shift-add trees): the inferred
+    // 24x11 mult-R output exact zero on silicon while the identical mult-L
+    // played (DSP-mapping/config-spot class — sim-blind, all reports
+    // perfect); a later rebuild re-rolled placement and the remaining DSP
+    // mult-L died the same death (left channel = exact zeros + live dither,
+    // NOS jumper no help — the fade sits after the bypass mux). Both
+    // channels are now LUT trees, immune to the DSP-spot lottery.
+    // Bit-identical to $mul by construction: fgain <= 1024 < 2^11, the
+    // true product fits 34 bits, and every 35-bit intermediate add is
+    // exact (wraps mod 2^35 like $mul low bits).
+    // Gowin report MUST show top-level DSP 1->0 after this change;
+    // if it stays 1, a tree got re-packed into DSP and the dodge failed.
     wire [10:0] fgu = fgain;
+    wire signed [34:0] lbase = {{11{m_in_l[23]}}, m_in_l};
+    wire signed [34:0] lpp0 = fgu[0]  ? lbase : 35'sd0;
+    wire signed [34:0] lpp1 = fgu[1]  ? (lbase <<< 1)  : 35'sd0;
+    wire signed [34:0] lpp2 = fgu[2]  ? (lbase <<< 2)  : 35'sd0;
+    wire signed [34:0] lpp3 = fgu[3]  ? (lbase <<< 3)  : 35'sd0;
+    wire signed [34:0] lpp4 = fgu[4]  ? (lbase <<< 4)  : 35'sd0;
+    wire signed [34:0] lpp5 = fgu[5]  ? (lbase <<< 5)  : 35'sd0;
+    wire signed [34:0] lpp6 = fgu[6]  ? (lbase <<< 6)  : 35'sd0;
+    wire signed [34:0] lpp7 = fgu[7]  ? (lbase <<< 7)  : 35'sd0;
+    wire signed [34:0] lpp8 = fgu[8]  ? (lbase <<< 8)  : 35'sd0;
+    wire signed [34:0] lpp9 = fgu[9]  ? (lbase <<< 9)  : 35'sd0;
+    wire signed [34:0] lpp10 = fgu[10] ? (lbase <<< 10) : 35'sd0;
+    wire signed [34:0] ls01 = lpp0 + lpp1;
+    wire signed [34:0] ls23 = lpp2 + lpp3;
+    wire signed [34:0] ls45 = lpp4 + lpp5;
+    wire signed [34:0] ls67 = lpp6 + lpp7;
+    wire signed [34:0] ls89 = lpp8 + lpp9;
+    wire signed [34:0] lc1 = ls01 + ls23;
+    wire signed [34:0] lc2 = ls45 + ls67;
+    wire signed [34:0] lc3 = ls89 + lpp10;
+    wire signed [34:0] lc4 = lc1 + lc2;
+    wire signed [34:0] fprod_l = lc4 + lc3;
     wire signed [34:0] rbase = {{11{m_in_r[23]}}, m_in_r};
     wire signed [34:0] rpp0 = fgu[0]  ? rbase : 35'sd0;
     wire signed [34:0] rpp1 = fgu[1]  ? (rbase <<< 1)  : 35'sd0;

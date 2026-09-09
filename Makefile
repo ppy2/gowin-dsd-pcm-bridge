@@ -127,15 +127,16 @@ synth:
 # NOTE: local yosys is 0.23 (synth_gowin there hangs in ABC on wide
 # multipliers); the real synthesis is the Gowin IDE on Windows.
 # This gate proves clean elaboration + the expected datapath shape:
-# EXACTLY FOUR multipliers (1 shared 24x32 MAC of the polyphase engine
-# + 2 independent 32x32 MACs of the DSD decim2 L/R + 1 small 24x11
-# fade-gain mult-L; fade-R is a manual LUT shift-add tree, bit-identical
-# by construction, dodging a silicon-dead DSP spot on R), 10 SDPB BSRAM
+# EXACTLY THREE multipliers (1 shared 24x32 MAC of the polyphase engine
+# + 2 independent 32x32 MACs of the DSD decim2 L/R; both 24x11 fade-gain
+# mults are manual LUT shift-add trees, bit-identical by construction,
+# dodging silicon-dead DSP spots on R (proven) and L (re-rolled placement
+# killed it in a later build)), 10 SDPB BSRAM
 # blocks (8 DSD-FIR coefficient ROMs + 2 decim2 delay lines), zero
 # inferred memories (scalar chains + case ROMs, no $mem).
 	yosys -p "verilog_defaults -add -Itools; read_verilog $(RTL) $(BB); hierarchy -check -top top; prep -top top; stat" | tee $(BUILD)/synth.log
 	! grep -iE "error" $(BUILD)/synth.log
-	grep -E -q '[$$]mul +4$$' $(BUILD)/synth.log
+	grep -E -q '[$$]mul +3$$' $(BUILD)/synth.log
 	grep -E -q ' SDPB +10$$' $(BUILD)/synth.log
 	! grep -E 'Number of memories: +[1-9]' $(BUILD)/synth.log
 
