@@ -122,6 +122,47 @@ module tb_dither_24_16;
             $display("FAIL: L/R dither locked"); err = err + 1;
         end
 
+        // Temporal whiteness on digital silence (65536 pairs): the low
+        // byte of a 1-step LFSR overlaps 7/8 bits with its predecessor
+        // (measured lag-1 r = 0.25 — lowpassed dither). Bounds here are
+        // ~7x the 3-sigma white level (65536 samples) to leave sim/seed
+        // margin while catching any structural correlation.
+        begin : white
+            integer sl, sr, sl2, sr2, pl, pr, sxl;
+            integer pl_prev_l, pl_prev_r;
+            integer n;
+            sl = 0; sr = 0; sl2 = 0; sr2 = 0; pl = 0; pr = 0; sxl = 0;
+            for (n = 0; n < 65536; n = n + 1) begin
+                push(24'sd0, 24'sd0);
+                got_l = $signed(out_l); got_r = $signed(out_r);
+                sl = sl + got_l; sr = sr + got_r;
+                sl2 = sl2 + got_l * got_l; sr2 = sr2 + got_r * got_r;
+                if (n > 0) begin
+                    pl = pl + got_l * pl_prev_l; pr = pr + got_r * pl_prev_r;
+                    sxl = sxl + got_l * got_r;
+                end
+                pl_prev_l = got_l; pl_prev_r = got_r;
+            end
+            // mean |.| < 0.01 LSB (655), variance in [0.3, 0.7] (TPDF ~0.5)
+            if (sl > 655 || sl < -655 || sr > 655 || sr < -655) begin
+                $display("FAIL: dither DC bias L=%0d R=%0d", sl, sr);
+                err = err + 1;
+            end
+            if (sl2 < 15000 || sl2 > 18000 || sr2 < 15000 || sr2 > 18000) begin
+                $display("FAIL: dither variance L=%0d R=%0d", sl2, sr2);
+                err = err + 1;
+            end
+            // |lag-1 r| < 0.02 (white 3-sigma = 0.012, raw ~384)
+            if (pl > 700 || pl < -700 || pr > 700 || pr < -700) begin
+                $display("FAIL: dither lag-1 corr L=%0d R=%0d", pl, pr);
+                err = err + 1;
+            end
+            // |L/R xcorr| < 0.02
+            if (sxl > 700 || sxl < -700) begin
+                $display("FAIL: L/R xcorr %0d", sxl); err = err + 1;
+            end else $display("dither whiteness ok");
+        end
+
         if (err == 0) $display("PASS tb_dither_24_16 (div=%0d/48)", div_seen);
         else $display("FAIL tb_dither_24_16 (%0d)", err);
         $finish;

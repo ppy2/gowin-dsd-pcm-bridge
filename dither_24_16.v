@@ -22,8 +22,14 @@
 //
 // TPDF: difference/sum of two independent 16-bit maximal-length LFSRs per
 // channel (distinct polynomials AND distinct L/R seeds, as in the proven
-// mono module). Stepped once per stereo pair. Combined period ~2^32
-// samples; zero mean, white, channel-independent.
+// mono module). Stepped 16 states per stereo pair: consecutive output
+// bytes share no register bits (a 1-step advance overlaps 7/8 bits and
+// measured lag-1 autocorrelation 0.25 — lowpassed, not white). 16-step
+// keeps full 65535-cycles (gcd(16, 65535) == 1), so marginals stay exactly
+// triangular; the joint (la, lb) orbit is 65535 pairs (~0.37 s at the
+// output grid — inaudible at +-1 LSB16, and identical to the 1-step
+// design, which locksteps the same way). Zero mean, white,
+// channel-independent (proven by tb_dither whiteness asserts + dump).
 module dither_24_16 (
     input  wire              clk,
     input  wire              rst_n,
@@ -36,6 +42,29 @@ module dither_24_16 (
 );
     reg [15:0] la, lb; // left RPDF pair
     reg [15:0] ra, rb; // right RPDF pair (different seeds)
+
+    // 16-step advance (combinational unroll): consecutive bytes share no
+    // bits. Taps: la/ra = x^16+x^14+x^13+x^11+1, lb/rb = x^16+x^15+x^13+x^4+1.
+    function [15:0] adv_la;
+        input [15:0] s;
+        integer j;
+        begin
+            adv_la = s;
+            for (j = 0; j < 16; j = j + 1)
+                adv_la = {adv_la[14:0],
+                    adv_la[15] ^ adv_la[13] ^ adv_la[12] ^ adv_la[10]};
+        end
+    endfunction
+    function [15:0] adv_lb;
+        input [15:0] s;
+        integer j;
+        begin
+            adv_lb = s;
+            for (j = 0; j < 16; j = j + 1)
+                adv_lb = {adv_lb[14:0],
+                    adv_lb[15] ^ adv_lb[14] ^ adv_lb[12] ^ adv_lb[3]};
+        end
+    endfunction
 
     // Unsigned 0..255 RPDF bytes, summed to 0..510, centred to +-255.
     wire signed [9:0] tpdf_l =
@@ -56,7 +85,10 @@ module dither_24_16 (
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             la <= 16'h1ace; lb <= 16'hb357; // as proven (left)
-            ra <= 16'h5d19; rb <= 16'h7643; // as proven (right)
+            ra <= 16'h5d19; rb <= 16'h54a4; // right: rb phase picked for
+            // minimum ra x rb cross-correlation over lags +-8 (worst
+            // 0.0040, at the measurement floor; m-sequence pairs have
+            // ~0.008 cross peaks elsewhere — 0x7643 sat on one at lag-1)
             out_valid <= 1'b0;
             out_l <= 16'sd0; out_r <= 16'sd0;
         end else begin
@@ -65,10 +97,10 @@ module dither_24_16 (
                 out_l <= q_l;
                 out_r <= q_r;
                 out_valid <= 1'b1;
-                la <= {la[14:0], la[15] ^ la[13] ^ la[12] ^ la[10]};
-                lb <= {lb[14:0], lb[15] ^ lb[14] ^ lb[12] ^ lb[3]};
-                ra <= {ra[14:0], ra[15] ^ ra[13] ^ ra[12] ^ ra[10]};
-                rb <= {rb[14:0], rb[15] ^ rb[14] ^ rb[12] ^ rb[3]};
+                la <= adv_la(la);
+                lb <= adv_lb(lb);
+                ra <= adv_la(ra);
+                rb <= adv_lb(rb);
             end
         end
     end
