@@ -1,7 +1,5 @@
 # FPGA SRC для [Tang Primer 25K](https://wiki.sipeed.com/hardware/en/tang/tang-primer-25k/primer-25k.html) (GW5A-LV25MG121NC1/I0)
 
-![datapath](docs/block.svg)
-
 Передискретизация PCM и приём DSD для ЦАП без оверсемплинга (TDA1541).
 Один образ на оба clock-домена (логика на отношениях к MCLK).
 
@@ -17,6 +15,9 @@
 - Выход: I2S master 16 бит + TDA1541(A) simultaneous (offset binary).
 - Перемычка A10–3.3V: NOS-режим (интерполятор выкл, чистой повтор).
   Переключать на стопе. DSD-децимация не отключается.
+
+![datapath](docs/block.svg#gh-light-mode-only)
+![datapath](docs/block-dark.svg#gh-dark-mode-only)
 
 ## Пины
 
