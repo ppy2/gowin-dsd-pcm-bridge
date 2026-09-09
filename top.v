@@ -47,7 +47,7 @@ module top (
 
     i2s_receiver u_rx (
         .clk(mclk_in),
-        .rst_n(rst_n),
+        .rst_n(pcm_rst_n),
         .bclk_in(i2s_bclk_in),
         .lrck_in(i2s_lrck_in),
         .sdata_in(i2s_sdata_in),
@@ -58,7 +58,7 @@ module top (
 
     rate_detect u_det (
         .clk(mclk_in),
-        .rst_n(rst_n),
+        .rst_n(pcm_rst_n),
         .lrck_in(i2s_lrck_in),
         .sel(rate_sel),
         .in_idle(rate_idle)
@@ -66,7 +66,7 @@ module top (
 
     src_interp u_src (
         .clk(mclk_in),
-        .rst_n(rst_n),
+        .rst_n(pcm_rst_n),
         .pair_valid(pair_valid),
         .in_l(rx_l),
         .in_r(rx_r),
@@ -91,6 +91,37 @@ module top (
             dsd_on_sync <= {dsd_on_sync[0], dsd_on};
     end
     wire dsd_active = dsd_on_sync[1];
+
+    // PCM-path re-init around DSD: while dsd_active the shared pins carry
+    // the DSD bit clock + DATA garbage straight into the PCM receiver,
+    // rate detector and SRC (flooded FIFOs/histories/sel). Whatever state
+    // that leaves behind, wipe it: hold receiver + rate_detect + src in
+    // reset for the whole DSD session and 65536 MCLK (~1.5 ms) after the
+    // fall, so transports clocks stabilize first. Release lands inside
+    // the switch HOLD (5.8 ms), PCM relocks in 3 frames underneath.
+    // Dither/TX/fade keep running (no latchable state there) so output
+    // clocks never stop.
+    reg dsd_prev;
+    reg fall_hold;
+    reg [15:0] fall_cnt;
+    always @(posedge mclk_in or negedge rst_n) begin
+        if (!rst_n) begin
+            dsd_prev <= 1'b0; fall_hold <= 1'b0; fall_cnt <= 16'd0;
+        end else begin
+            dsd_prev <= dsd_active;
+            if (dsd_active) begin
+                fall_hold <= 1'b0; fall_cnt <= 16'd0;
+            end else if (dsd_prev && !dsd_active) begin
+                fall_hold <= 1'b1; fall_cnt <= 16'hFFFF;
+            end else if (fall_hold) begin
+                if (fall_cnt == 16'd0)
+                    fall_hold <= 1'b0;
+                else
+                    fall_cnt <= fall_cnt - 16'd1;
+            end
+        end
+    end
+    wire pcm_rst_n = rst_n & ~dsd_active & ~fall_hold;
 
     wire dsd_valid_352;
     wire signed [31:0] dsd_352_l;
