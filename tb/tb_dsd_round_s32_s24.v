@@ -1,8 +1,9 @@
 `timescale 1ns/1ps
-// Regression for the DSD S32(Q31) -> S24 boundary.
-// This must scale by >>> 8 before S24 saturation. Rail-only tests cannot
-// catch an accidental pre-shift clamp: ordinary music levels then collapse
-// to a rail and create a harmonic comb.
+// Regression for the DSD S32(Q31) -> +6 dB -> S24 boundary.
+// x2 with S24 saturation (commercial-DAC DSD loudness match): ordinary
+// levels double without railing; SACD-0dB peaks (+1/2 FS) land on the
+// rail; rails stay railed. Rail-only tests cannot catch an accidental
+// pre-shift clamp: music would collapse to a rail (harmonic comb).
 module tb_dsd_round_s32_s24;
     reg signed [31:0] in_s32;
     wire signed [23:0] out_s24;
@@ -29,15 +30,16 @@ module tb_dsd_round_s32_s24;
 
     initial begin
         check(32'sh00000000, 24'sh000000);
-        check(32'sh0000007F, 24'sh000000); // +127/256 rounds down
-        check(32'sh00000080, 24'sh000001); // +0.5 LSB rounds up
-        check(32'shFFFFFF7F, 24'shFFFFFF); // -129/256 rounds to -1
-        check(32'sh10000000, 24'sh100000); // +1/8 FS: must not rail
-        check(32'sh20000000, 24'sh200000); // +1/4 FS: must not rail
-        check(32'sh40000000, 24'sh400000); // +1/2 FS: must not rail
-        check(32'shE0000000, 24'shE00000); // -1/4 FS: must not rail
+        check(32'sh0000007F, 24'sh000001); // 127*2+128 rounds up to 1
+        check(32'sh00000040, 24'sh000001); // 64*2=128, +128>>8 = 1
+        check(32'shFFFFFF7F, 24'shFFFFFF); // -129*2-130, >>>8 = -1
+        check(32'sh10000000, 24'sh200000); // +1/8 FS doubles, must not rail
+        check(32'sh20000000, 24'sh400000); // +1/4 FS doubles, must not rail
+        check(32'sh40000000, 24'sh7FFFFF); // +1/2 FS (SACD 0dB peak) on rail
+        check(32'shE0000000, 24'shC00000); // -1/4 FS doubles, must not rail
+        check(32'shC0000000, 24'sh800000); // -1/2 FS doubles to exact rail
         check(32'sh7FFFFFFF, 24'sh7FFFFF); // positive rail saturates
-        check(32'sh80000000, 24'sh800000); // negative rail is exact
+        check(32'sh80000000, 24'sh800000); // negative rail saturates
 
         if (errors == 0)
             $display("PASS tb_dsd_round_s32_s24");
