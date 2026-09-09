@@ -28,6 +28,8 @@ module top #(
     input  wire i2s_sdata_in,
     input  wire dsd_on,            // native-DSD enable (Amanero DSD-on)
     input  wire dsd_data2_in,      // dedicated DATA2 pin (transport 2, G10).
+    input  wire nos_bypass,        // NOS jumper (A10, pull-down in .cst):
+                                   // 1 = PCM interp engine off (dup/drop).
     output wire i2s_bclk_out,      // Amanero-style DATA2-on-LRCLK needs no
     output wire i2s_lrck_out,      // pin: auto-detect picks the live source
     output wire i2s_sdata_out,
@@ -87,6 +89,7 @@ module top #(
         .frame_tick(frame_tick),
         .sel(rate_sel),
         .in_idle(rate_idle),
+        .bypass(nos_bypass),
         .out_valid(src_valid),
         .out_l(src_l),
         .out_r(src_r)

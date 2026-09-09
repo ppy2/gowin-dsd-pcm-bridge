@@ -10,12 +10,21 @@
 //
 // X1 (native rate): bit-transparent bypass (only the final TPDF dither
 // touches the word downstream) — native hires keeps its NOS character.
+// NOS jumper (A10, PULL_DOWN: floating = filters on; A10=3V3 = X2/X4
+// engine off, plain duplicate/drop = full NOS on every rate). The jumper
+// touches ONLY the PCM interpolation engine: DSD decimation and the
+// TPDF dither stay always on (DSD without its decim filter is full-level
+// noise-shaped garbage — a tweeter killer, never bypassed).
 // D2 (8x in): drop every 2nd pair (aliasing of >88k content accepted,
 // stated openly; 8x material has ~nothing up there).
 // X2/X4: minimum-phase polyphase FIR interpolation (TDA1541 path):
 //   X4 prototype N=121 (31 taps/phase), stop 59.7 dB from 24.1k,
 //   ripple 0.09 dB, ZERO precursor (neg-precursor 0.00%, step preshoot 0);
-//   X2 prototype N=25 (13 taps/phase, zero-padded to 31), stop 125 dB.
+//   X2 prototype N=33 (17 taps/phase, zero-padded to 31), stop 83.8 dB
+//   from input Nyquist (44.1k @176.4 grid / 48k @192 grid): a proper
+//   interpolator — images of 20..48k input content fall in the
+//   stopband, not the transition (the old N=25 gentle stopped only
+//   from 68/76k: -19 dB image on a 40k torture tone, LA-proven).
 //   Coefficients Q2.30, DC exact by construction (see tools/).
 // Engine: ONE shared 24x32 MAC + 64-bit accumulator, time-multiplexed
 // across 2 channels x 31 taps (~70 mclk per output frame of 256).
@@ -34,7 +43,8 @@ module src_interp (
     input  wire              frame_tick,   // 1-mclk pulse, output frame start
     input  wire [1:0]        sel,          // 00=D2 01=X1 10=X2 11=X4
     input  wire              in_idle,
-    output wire              out_valid,
+    input  wire              bypass,       // 1: NOS jumper (A10=3V3) — plain
+    output wire              out_valid,    // duplicate/drop, engine off
     output wire signed [23:0] out_l,
     output wire signed [23:0] out_r
 );
@@ -59,8 +69,18 @@ module src_interp (
         .out_valid(dd_valid), .out_l(dd_l), .out_r(dd_r)
     );
 
-    wire use_engine = (sel == 2'b10) || (sel == 2'b11);
+    wire use_engine = ((sel == 2'b10) || (sel == 2'b11)) && !bypass_s;
     wire [2:0] R = (sel == 2'b11) ? 3'd4 : 3'd2;
+
+    // Jumper synchronizer (static config: set before Play — flipping
+    // mid-stream clicks by the engine group-delay step; the dd path
+    // itself runs continuously so either side is always valid).
+    reg [1:0] bypass_q;
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) bypass_q <= 2'b00;
+        else bypass_q <= {bypass_q[0], bypass};
+    end
+    wire bypass_s = bypass_q[1];
 
     // ---- engine state (scalars only, see header note) ----
     reg signed [23:0] fbL0, fbL1, fbR0, fbR1; // pair FIFO, depth 2

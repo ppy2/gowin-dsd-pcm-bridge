@@ -31,11 +31,13 @@ module tb_swap_diag;
     top #(.DIAG_SWAP_TX(1'b0)) u0 (
         .mclk_in(mclk), .i2s_bclk_in(bclk), .i2s_lrck_in(lrck),
         .i2s_sdata_in(sdata), .dsd_on(1'b0), .dsd_data2_in(1'b0),
+        .nos_bypass(1'b0),
         .i2s_bclk_out(b0), .i2s_lrck_out(l0), .i2s_sdata_out(d0)
     );
     top #(.DIAG_SWAP_TX(1'b1)) u1 (
         .mclk_in(mclk), .i2s_bclk_in(bclk), .i2s_lrck_in(lrck),
         .i2s_sdata_in(sdata), .dsd_on(1'b0), .dsd_data2_in(1'b0),
+        .nos_bypass(1'b0),
         .i2s_bclk_out(b1), .i2s_lrck_out(l1), .i2s_sdata_out(d1)
     );
 

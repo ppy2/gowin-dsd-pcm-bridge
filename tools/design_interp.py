@@ -217,7 +217,9 @@ def emit_hex(prefix, sets):
 
 def main():
     # LOCKED (measured 2026-09): X4 N=121 (stop 59.7 dB, ripple 0.09 dB,
-    # zero precursor); X2 N=25 (stop 125 dB, 26 taps — short on purpose).
+    # zero precursor); X2 N=33 (stop 83.8 dB from input Nyquist 44.1k,
+    # ripple 0.005 dB, zero precursor — proper interpolator: images of
+    # 20..48k input content land in the stopband, not the transition).
     # Taller candidates explored: N=101 too weak (52 dB / 0.21 dB),
     # N=141 stronger (66 dB) but longer time-smear for no audible need.
     h_lin, h_min, phases4, n4 = design_set(4, 121, F_IMG4)

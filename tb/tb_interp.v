@@ -13,6 +13,7 @@ module tb_interp;
     reg signed [23:0] pl = 24'sd0, pr = 24'sd0;
     reg [1:0] sel = 2'b01;
     reg idle = 1'b0;
+    reg bypass = 1'b0;
 
     // Output frame grid: tick every 256 mclk.
     reg [7:0] fc8 = 8'd0;
@@ -28,6 +29,7 @@ module tb_interp;
         .clk(clk), .rst_n(rst_n),
         .pair_valid(pv), .in_l(pl), .in_r(pr),
         .frame_tick(ftick), .sel(sel), .in_idle(idle),
+        .bypass(bypass),
         .out_valid(ov), .out_l(ol), .out_r(orr)
     );
 
@@ -390,6 +392,40 @@ module tb_interp;
                     $display("FAIL: X1 bypass (%0d)", bad2); err = err + 1;
                 end else $display("X1 bypass ok");
             end
+
+            // ---------- NOS jumper: X2 bypass = plain duplicate ----------
+            sel = 2'b10;
+            bypass = 1'b1;
+            for (i = 0; i < 8; i = i + 1) begin
+                stimL[i] = 24'sd0; stimR[i] = 24'sd0;
+            end
+            run_stream(8, 512, 10, 8 * 2 + 8); // flush: sel-switch tail out
+            stimL[0] = 24'sd3000000; stimR[0] = 24'sd3000000;
+            run_stream(8, 512, 10, 8 * 2 + 8);
+            begin : noschk
+                // Duplicate emits each pair twice: exactly two frames carry
+                // the impulse (== C), everything else is zero. The engine
+                // would ring for ~34 frames — so this also proves the engine
+                // is really off, not just quiet.
+                integer k, nz;
+                nz = 0;
+                for (k = 0; k < nresp; k = k + 1) begin
+                    if ($signed(resp[k]) !== 0 || $signed(respr[k]) !== 0) begin
+                        nz = nz + 1;
+                        if ($signed(resp[k]) !== 24'sd3000000 ||
+                            $signed(respr[k]) !== 24'sd3000000) begin
+                            $display("nosbad k=%0d L=%0d R=%0d", k,
+                                $signed(resp[k]), $signed(respr[k]));
+                            nz = nz + 1000;
+                        end
+                    end
+                end
+                if (nz !== 2) begin
+                    $display("FAIL: NOS bypass nz=%0d (want 2)", nz);
+                    err = err + 1;
+                end else $display("NOS bypass ok");
+            end
+            bypass = 1'b0;
         end
 
         if (err == 0) $display("PASS tb_interp");

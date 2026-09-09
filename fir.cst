@@ -38,6 +38,8 @@ IO_PORT "dsd_on" IO_TYPE=LVCMOS33 PULL_MODE=DOWN BANK_VCCIO=3.3;
 // in the ~1 ms acquisition window). The active transport overrides it.
 IO_LOC "dsd_data2_in" G10;
 IO_PORT "dsd_data2_in" IO_TYPE=LVCMOS33 PULL_MODE=DOWN BANK_VCCIO=3.3;
+IO_LOC "nos_bypass" A10;
+IO_PORT "nos_bypass" IO_TYPE=LVCMOS33 PULL_MODE=DOWN BANK_VCCIO=3.3;
 
 // TDA1541(A) simultaneous-mode output on the right pin group.
 // BCK goes to the clock-capable pin H5 (GCLKT_2); LE/DL/DR are plain I/O.
