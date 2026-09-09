@@ -1,6 +1,7 @@
 build/
 *.vvp
 *.log
+*.dsf
 __pycache__/
 # Gowin regenerable binaries (reports + bitstream are kept)
 *.pr
