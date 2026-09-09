@@ -12,7 +12,7 @@ BUILD ?= build
 # tools/gowin_sdpb_bb.v = yosys-gate blackbox ONLY (Gowin has its own
 # SDPB primitive — do NOT add the bb). gowin_bsram_sim.v = icarus ONLY.
 # (REMOVE lpf_8k_4th_seq.v, lpf_8k_4th.v, biquad_df1.v if present).
-RTL := top.v i2s_receiver.v rate_detect.v src_interp.v src_dupdrop.v dither_24_16.v i2s_transmitter.v dsd_to_pcm.v dsd_pcm_decim2.v hb_sample_ram.v dsd_round_s32_s24.v
+RTL := top.v i2s_receiver.v rate_detect.v src_interp.v src_dupdrop.v dither_24_16.v i2s_transmitter.v tda1541_tx.v dsd_to_pcm.v dsd_pcm_decim2.v hb_sample_ram.v dsd_round_s32_s24.v
 VH := tools/interp_coefs.vh
 BB := tools/gowin_sdpb_bb.v
 BSRAM_SIM := gowin_bsram_sim.v
@@ -23,7 +23,7 @@ all: verify
 
 verify: sim synth
 
-sim: $(BUILD)/sim/tb_top.pass $(BUILD)/sim/tb_src.pass $(BUILD)/sim/tb_dither.pass $(BUILD)/sim/tb_interp.pass $(BUILD)/sim/tb_dsd_path.pass $(BUILD)/sim/tb_dsd_round.pass $(BUILD)/sim/tb_dsd_trans.pass $(BUILD)/sim/tb_dsd_flood.pass $(BUILD)/sim/tb_swap_diag.pass $(BUILD)/sim/tb_chatter.pass $(BUILD)/sim/tb_dsd_hostile.pass
+sim: $(BUILD)/sim/tb_top.pass $(BUILD)/sim/tb_src.pass $(BUILD)/sim/tb_dither.pass $(BUILD)/sim/tb_interp.pass $(BUILD)/sim/tb_dsd_path.pass $(BUILD)/sim/tb_dsd_round.pass $(BUILD)/sim/tb_dsd_trans.pass $(BUILD)/sim/tb_dsd_flood.pass $(BUILD)/sim/tb_swap_diag.pass $(BUILD)/sim/tb_chatter.pass $(BUILD)/sim/tb_dsd_hostile.pass $(BUILD)/sim/tb_tda.pass
 
 $(BUILD)/sim/tb_top.pass: tb/tb_top.v $(RTL) $(VH) $(BSRAM_SIM)
 	mkdir -p $(BUILD)/sim
@@ -100,6 +100,13 @@ $(BUILD)/sim/tb_dsd_hostile.pass: tb/tb_dsd_hostile.v $(RTL) $(VH) $(BSRAM_SIM)
 	iverilog -g2012 -Wall -Itools -s tb_dsd_hostile -o $(BUILD)/sim/dsd_hostile.vvp tb/tb_dsd_hostile.v $(RTL) $(BSRAM_SIM)
 	vvp $(BUILD)/sim/dsd_hostile.vvp | tee $(BUILD)/sim/dsd_hostile.log
 	grep -q "PASS tb_dsd_hostile" $(BUILD)/sim/dsd_hostile.log
+	touch $@
+
+$(BUILD)/sim/tb_tda.pass: tb/tb_tda.v $(RTL) $(VH) $(BSRAM_SIM)
+	mkdir -p $(BUILD)/sim
+	iverilog -g2012 -Wall -Itools -s tb_tda -o $(BUILD)/sim/tda.vvp tb/tb_tda.v $(RTL) $(BSRAM_SIM)
+	vvp $(BUILD)/sim/tda.vvp | tee $(BUILD)/sim/tda.log
+	grep -q "PASS tb_tda" $(BUILD)/sim/tda.log
 	touch $@
 
 synth:

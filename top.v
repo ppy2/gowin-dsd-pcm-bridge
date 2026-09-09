@@ -29,7 +29,11 @@ module top #(
     input  wire dsd_on,            // native-DSD enable (Amanero DSD-on)
     output wire i2s_bclk_out,
     output wire i2s_lrck_out,
-    output wire i2s_sdata_out
+    output wire i2s_sdata_out,
+    output wire tda_bck_out,       // TDA1541(A) simultaneous: BCK H5
+    output wire tda_le_out,        // LE F5
+    output wire tda_dl_out,        // left data G7 (offset binary)
+    output wire tda_dr_out         // right data H8 (offset binary)
 );
     reg [5:0] por = 6'd0;
     always @(posedge mclk_in) begin
@@ -351,5 +355,21 @@ module top #(
         .lrck_out(i2s_lrck_out),
         .sdata_out(i2s_sdata_out),
         .frame_tick(frame_tick)
+    );
+
+    // TDA1541(A) simultaneous out: the same post-dither 16-bit pair as
+    // the I2S TX (straight mapping, never swapped). Proves the frontend
+    // independently of the I2S TX right-half path.
+    tda1541_tx u_tda (
+        .clk(mclk_in),
+        .rst_n(rst_n),
+        .in_valid(dith_valid),
+        .in_l(dith_l),
+        .in_r(dith_r),
+        .frame_tick(frame_tick),
+        .bck_out(tda_bck_out),
+        .le_out(tda_le_out),
+        .dl_out(tda_dl_out),
+        .dr_out(tda_dr_out)
     );
 endmodule

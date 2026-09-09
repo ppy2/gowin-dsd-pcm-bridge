@@ -31,3 +31,17 @@ IO_PORT "i2s_sdata_out" IO_TYPE=LVCMOS33 DRIVE=8 BANK_VCCIO=3.3;
 // and DATA2 on LRCLK (D11); DSD64..512 require MCLK 45.1584 MHz.
 IO_LOC "dsd_on" G11;
 IO_PORT "dsd_on" IO_TYPE=LVCMOS33 PULL_MODE=DOWN BANK_VCCIO=3.3;
+
+// TDA1541(A) simultaneous-mode output on the right pin group.
+// BCK goes to the clock-capable pin H5 (GCLKT_2); LE/DL/DR are plain I/O.
+IO_LOC "tda_bck_out" H5;
+IO_PORT "tda_bck_out" IO_TYPE=LVCMOS33 DRIVE=8 BANK_VCCIO=3.3;
+
+IO_LOC "tda_le_out" F5;
+IO_PORT "tda_le_out" IO_TYPE=LVCMOS33 DRIVE=8 BANK_VCCIO=3.3;
+
+IO_LOC "tda_dl_out" G7;
+IO_PORT "tda_dl_out" IO_TYPE=LVCMOS33 DRIVE=8 BANK_VCCIO=3.3;
+
+IO_LOC "tda_dr_out" H8;
+IO_PORT "tda_dr_out" IO_TYPE=LVCMOS33 DRIVE=8 BANK_VCCIO=3.3;

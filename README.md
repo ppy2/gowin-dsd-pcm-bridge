@@ -105,7 +105,7 @@ acquisition + заполнение FIR-окна, PCM — релок детект
 1. Устройство GW5A-LV25MG121NC1/I0, язык Verilog 2001.
 2. Добавить файлы: `top.v`, `i2s_receiver.v`, `rate_detect.v`,
    `src_interp.v`, `src_dupdrop.v`, `dither_24_16.v`, `i2s_transmitter.v`,
-   `dsd_to_pcm.v`, `dsd_pcm_decim2.v`, `hb_sample_ram.v`,
+   `tda1541_tx.v`, `dsd_to_pcm.v`, `dsd_pcm_decim2.v`, `hb_sample_ram.v`,
    `dsd_round_s32_s24.v` + КОПИЮ `tools/interp_coefs.vh` рядом с RTL
    (verilog `include). `tools/gowin_sdpb_bb.v` — только для локального
    гейта yosys (blackbox SDPB); в Gowin НЕ добавлять (там свой примитив
@@ -113,7 +113,8 @@ acquisition + заполнение FIR-окна, PCM — релок детект
    в Gowin НЕ добавлять. УДАЛИТЬ `lpf_8k_4th_seq.v`, `lpf_8k_4th.v`,
    `biquad_df1.v`, если есть.
    Старый `top.v` заменить целиком.
-3. Констрейнты: `fir.cst` (добавлен `dsd_on` G11), `constraints.sdc`.
+3. Констрейнты: `fir.cst` (добавлены `dsd_on` G11 и TDA1541-пины:
+   BCK H5, LE F5, DL G7, DR H8), `constraints.sdc`.
    MCLK от транспорта (45.1584/49.152) — в SDC забит tight-вариант
    49.152. DSD — только при 45.1584.
 4. Синтез → P&R → прошить. Проверить положительный setup/hold slack
@@ -127,7 +128,7 @@ acquisition + заполнение FIR-окна, PCM — релок детект
 
 ## Локальная проверка
 
-`make verify` — одиннадцать бенчей (сквозной I2S X1: Philips-кадр, плоские
+`make verify` — двенадцать бенчей (сквозной I2S X1: Philips-кадр, плоские
 1/8/30 кГц, L−R < 2 LSB, детект X1; матрица SRC D2/X1/X2/X4 + фазы +
 глитч + idle-mute + relock; контракт дизера; бит-точный движок
 интерполяции X2/X4: импульсы/DC/степы/синусы/X1; DSD-тракт: гейт,
@@ -161,3 +162,13 @@ PCM. Требует: STEADY, мукс на PCM, валиды текут и Means
 только POR) — после любой паузы клоков движок X2/X4 вечно выдавал
 валидные нули с замороженной фазой; лечится только перепрошивкой.
 Фикс: `zero_frame` — per-job флаг (`src_interp.v`, S0).
+Двенадцатый — `tb_tda`: TDA1541(A) simultaneous-выход (`tda1541_tx.v`,
+пины BCK H5 / LE F5 / DL G7 / DR H8). Функционал по miro1360/MT02:
+16-битные слова L+R параллельно, MSB-first, инвертированный MSB
+(offset binary), 16 остановленных BCK на сэмпл, LE-импульс 4 BCK
+после последнего бита, иначе BCK в нуле. В отличие от референса
+(ресинхронизация входного 64fs I2S), блок — мастер от своих
+MCLK/frame_tick и питается той же пост-дизерной 16-битной парой,
+что I2S TX (прямой маппинг, DIAG_SWAP_TX не действует): оба выхода
+всегда согласны. Юнит: все слова/рейлы/голод-повтор; сквозной:
+X1 DC ±0.25 FS декодируется в offset-binary ±16 LSB.
