@@ -23,7 +23,7 @@ all: verify
 
 verify: sim synth
 
-sim: $(BUILD)/sim/tb_top.pass $(BUILD)/sim/tb_src.pass $(BUILD)/sim/tb_dither.pass $(BUILD)/sim/tb_interp.pass $(BUILD)/sim/tb_dsd_path.pass $(BUILD)/sim/tb_dsd_round.pass $(BUILD)/sim/tb_dsd_trans.pass
+sim: $(BUILD)/sim/tb_top.pass $(BUILD)/sim/tb_src.pass $(BUILD)/sim/tb_dither.pass $(BUILD)/sim/tb_interp.pass $(BUILD)/sim/tb_dsd_path.pass $(BUILD)/sim/tb_dsd_round.pass $(BUILD)/sim/tb_dsd_trans.pass $(BUILD)/sim/tb_dsd_flood.pass
 
 $(BUILD)/sim/tb_top.pass: tb/tb_top.v $(RTL) $(VH) $(BSRAM_SIM)
 	mkdir -p $(BUILD)/sim
@@ -72,6 +72,13 @@ $(BUILD)/sim/tb_dsd_trans.pass: tb/tb_dsd_trans.v $(RTL) $(VH) $(BSRAM_SIM)
 	iverilog -g2012 -Wall -Itools -s tb_dsd_trans -o $(BUILD)/sim/dsd_trans.vvp tb/tb_dsd_trans.v $(RTL) $(BSRAM_SIM)
 	vvp $(BUILD)/sim/dsd_trans.vvp | tee $(BUILD)/sim/dsd_trans.log
 	grep -q "PASS tb_dsd_trans" $(BUILD)/sim/dsd_trans.log
+	touch $@
+
+$(BUILD)/sim/tb_dsd_flood.pass: tb/tb_dsd_flood.v $(RTL) $(VH) $(BSRAM_SIM)
+	mkdir -p $(BUILD)/sim
+	iverilog -g2012 -Wall -Itools -s tb_dsd_flood -o $(BUILD)/sim/dsd_flood.vvp tb/tb_dsd_flood.v $(RTL) $(BSRAM_SIM)
+	vvp $(BUILD)/sim/dsd_flood.vvp | tee $(BUILD)/sim/dsd_flood.log
+	grep -q "PASS tb_dsd_flood" $(BUILD)/sim/dsd_flood.log
 	touch $@
 
 synth:
