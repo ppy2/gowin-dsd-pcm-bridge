@@ -244,8 +244,13 @@ module src_interp (
                         if (take || (sel != prev_sel))
                             phase <= 2'd0;
                         k <= 6'd1;
+                        // zero_frame is a PER-JOB flag: an idle gap sets it
+                        // for that job only. (Was write-once: after any
+                        // clock-stop gap every later S4 emitted zeros with
+                        // frozen phase until POR — the post-DSD dead PCM
+                        // with alive input, proven by tb_dsd_hostile.)
+                        zero_frame <= in_idle;
                         if (in_idle) begin
-                            zero_frame <= 1'b1;
                             st <= 3'd4;
                         end else begin
                             st <= 3'd1; // SPUSH always: push + L-t0 preload
