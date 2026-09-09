@@ -23,7 +23,7 @@ all: verify
 
 verify: sim synth
 
-sim: $(BUILD)/sim/tb_top.pass $(BUILD)/sim/tb_src.pass $(BUILD)/sim/tb_dither.pass $(BUILD)/sim/tb_interp.pass $(BUILD)/sim/tb_dsd_path.pass $(BUILD)/sim/tb_dsd_round.pass $(BUILD)/sim/tb_dsd_trans.pass $(BUILD)/sim/tb_dsd_flood.pass $(BUILD)/sim/tb_swap_diag.pass
+sim: $(BUILD)/sim/tb_top.pass $(BUILD)/sim/tb_src.pass $(BUILD)/sim/tb_dither.pass $(BUILD)/sim/tb_interp.pass $(BUILD)/sim/tb_dsd_path.pass $(BUILD)/sim/tb_dsd_round.pass $(BUILD)/sim/tb_dsd_trans.pass $(BUILD)/sim/tb_dsd_flood.pass $(BUILD)/sim/tb_swap_diag.pass $(BUILD)/sim/tb_chatter.pass
 
 $(BUILD)/sim/tb_top.pass: tb/tb_top.v $(RTL) $(VH) $(BSRAM_SIM)
 	mkdir -p $(BUILD)/sim
@@ -86,6 +86,13 @@ $(BUILD)/sim/tb_swap_diag.pass: tb/tb_swap_diag.v $(RTL) $(VH) $(BSRAM_SIM)
 	iverilog -g2012 -Wall -Itools -s tb_swap_diag -o $(BUILD)/sim/swap_diag.vvp tb/tb_swap_diag.v $(RTL) $(BSRAM_SIM)
 	vvp $(BUILD)/sim/swap_diag.vvp | tee $(BUILD)/sim/swap_diag.log
 	grep -q "PASS tb_swap_diag" $(BUILD)/sim/swap_diag.log
+	touch $@
+
+$(BUILD)/sim/tb_chatter.pass: tb/tb_chatter.v $(RTL) $(VH) $(BSRAM_SIM)
+	mkdir -p $(BUILD)/sim
+	iverilog -g2012 -Wall -Itools -s tb_chatter -o $(BUILD)/sim/chatter.vvp tb/tb_chatter.v $(RTL) $(BSRAM_SIM)
+	vvp $(BUILD)/sim/chatter.vvp | tee $(BUILD)/sim/chatter.log
+	grep -q "PASS tb_chatter" $(BUILD)/sim/chatter.log
 	touch $@
 
 synth:

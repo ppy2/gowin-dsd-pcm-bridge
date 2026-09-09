@@ -43,7 +43,7 @@ module tb_dsd_trans;
         end
     end
 
-    top top_i (
+    top #(.DB_BITS(6)) top_i (
         .mclk_in(mclk),
         .i2s_bclk_in(i2s_bclk_in),
         .i2s_lrck_in(i2s_lrck_in),

@@ -18,6 +18,9 @@ module top #(
     // emits both slots and the zero comes from the frontend; if silence
     // stays, the TX right-half path is guilty). 0 = normal operation.
     parameter DIAG_SWAP_TX = 1'b0
+    // DB_BITS: dsd_active debounce window = 2^DB_BITS MCLK (~47 ms @21).
+    // Benches override to 6 (identical logic, sims stay fast).
+    , parameter DB_BITS = 21
 ) (
     input  wire mclk_in,
     input  wire i2s_bclk_in,
@@ -97,6 +100,30 @@ module top #(
             dsd_on_sync <= {dsd_on_sync[0], dsd_on};
     end
     wire dsd_active = dsd_on_sync[1];
+
+    // dsd_active debounce: adopt a new level only after 2^DB_BITS
+    // consecutive agreeing MCLK samples (binary counter, not shift).
+    // Measured silicon signature (LA, post-DSD switch): machine cycling
+    // in HOLD with dither-flow zeros + bursts = dsd_on chatter restarts
+    // the envelope faster than it settles. Sub-window chatter never
+    // reaches the mux; clean edges pass delayed by the window (47 ms
+    // @21 — inaudible vs DSD acquisition + Roon buffering). Fail-safe:
+    // a line that never rests keeps the last adopted level (boot: PCM).
+    reg [DB_BITS-1:0] ddeb_cnt;
+    reg dsd_active_db;
+    always @(posedge mclk_in or negedge rst_n) begin
+        if (!rst_n) begin
+            ddeb_cnt <= {DB_BITS{1'b0}};
+            dsd_active_db <= 1'b0;
+        end else if (dsd_active == dsd_active_db) begin
+            ddeb_cnt <= {DB_BITS{1'b0}};
+        end else if (ddeb_cnt == {DB_BITS{1'b1}}) begin
+            dsd_active_db <= dsd_active;
+            ddeb_cnt <= {DB_BITS{1'b0}};
+        end else begin
+            ddeb_cnt <= ddeb_cnt + 1'b1;
+        end
+    end
 
     // NOTE (reverted 2026-09-09): an earlier revision held the PCM path
     // in a derived async reset (pcm_rst_n) across DSD. Sim-clean, but on
@@ -178,7 +205,7 @@ module top #(
             case (sw_state)
                 ST_STEADY: begin
                     fgain <= 11'd1024;
-                    if (dsd_active != mux_frozen)
+                    if (dsd_active_db != mux_frozen)
                         sw_state <= ST_OUT;
                 end
                 ST_OUT: begin
@@ -187,7 +214,7 @@ module top #(
                     if (frame_tick) begin
                         if (fgain <= 11'd8) begin
                             fgain <= 11'd0;
-                            mux_frozen <= dsd_active;
+                            mux_frozen <= dsd_active_db;
                             hold <= 18'h3FFFF;
                             sw_state <= ST_HOLD;
                         end else
@@ -195,8 +222,8 @@ module top #(
                     end
                 end
                 ST_HOLD: begin
-                    if (dsd_active != mux_frozen) begin
-                        mux_frozen <= dsd_active;
+                    if (dsd_active_db != mux_frozen) begin
+                        mux_frozen <= dsd_active_db;
                         hold <= 18'h3FFFF;
                     end else if (hold != 18'd0)
                         hold <= hold - 18'd1;
@@ -204,7 +231,7 @@ module top #(
                         sw_state <= ST_IN;
                 end
                 ST_IN: begin
-                    if (dsd_active != mux_frozen)
+                    if (dsd_active_db != mux_frozen)
                         sw_state <= ST_OUT;
                     else if (frame_tick) begin
                         if (fgain >= 11'd1024) begin

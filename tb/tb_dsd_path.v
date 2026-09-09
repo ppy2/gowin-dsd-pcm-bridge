@@ -133,7 +133,7 @@ module tb_dsd_path;
     // ---------------- top smoke ----------------
     reg top_bclk = 1'b0, top_lr = 1'b0, top_sd = 1'b0;
     reg top_dsd_on = 1'b0;
-    top top_i (
+    top #(.DB_BITS(6)) top_i (
         .mclk_in(clk),
         .i2s_bclk_in(top_bclk),
         .i2s_lrck_in(top_lr),
