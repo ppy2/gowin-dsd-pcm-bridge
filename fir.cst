@@ -32,6 +32,13 @@ IO_PORT "i2s_sdata_out" IO_TYPE=LVCMOS33 DRIVE=8 BANK_VCCIO=3.3;
 IO_LOC "dsd_on" G11;
 IO_PORT "dsd_on" IO_TYPE=LVCMOS33 PULL_MODE=DOWN BANK_VCCIO=3.3;
 
+// Dedicated DSD DATA2 input (second transport type). Pull-down: with an
+// Amanero-style transport the pin floats, and the detector must see a
+// quiet line (it selects the alt source on >= 16 bit-boundary toggles
+// in the ~1 ms acquisition window). The active transport overrides it.
+IO_LOC "dsd_data2_in" G10;
+IO_PORT "dsd_data2_in" IO_TYPE=LVCMOS33 PULL_MODE=DOWN BANK_VCCIO=3.3;
+
 // TDA1541(A) simultaneous-mode output on the right pin group.
 // BCK goes to the clock-capable pin H5 (GCLKT_2); LE/DL/DR are plain I/O.
 IO_LOC "tda_bck_out" H5;

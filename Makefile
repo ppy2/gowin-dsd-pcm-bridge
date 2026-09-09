@@ -23,7 +23,7 @@ all: verify
 
 verify: sim synth
 
-sim: $(BUILD)/sim/tb_top.pass $(BUILD)/sim/tb_src.pass $(BUILD)/sim/tb_dither.pass $(BUILD)/sim/tb_interp.pass $(BUILD)/sim/tb_dsd_path.pass $(BUILD)/sim/tb_dsd_round.pass $(BUILD)/sim/tb_dsd_trans.pass $(BUILD)/sim/tb_dsd_flood.pass $(BUILD)/sim/tb_swap_diag.pass $(BUILD)/sim/tb_chatter.pass $(BUILD)/sim/tb_dsd_hostile.pass $(BUILD)/sim/tb_tda.pass $(BUILD)/sim/tb_mute.pass
+sim: $(BUILD)/sim/tb_top.pass $(BUILD)/sim/tb_src.pass $(BUILD)/sim/tb_dither.pass $(BUILD)/sim/tb_interp.pass $(BUILD)/sim/tb_dsd_path.pass $(BUILD)/sim/tb_dsd_round.pass $(BUILD)/sim/tb_dsd_trans.pass $(BUILD)/sim/tb_dsd_flood.pass $(BUILD)/sim/tb_swap_diag.pass $(BUILD)/sim/tb_chatter.pass $(BUILD)/sim/tb_dsd_hostile.pass $(BUILD)/sim/tb_tda.pass $(BUILD)/sim/tb_mute.pass $(BUILD)/sim/tb_dsd_srcsel.pass
 
 $(BUILD)/sim/tb_top.pass: tb/tb_top.v $(RTL) $(VH) $(BSRAM_SIM)
 	mkdir -p $(BUILD)/sim
@@ -114,6 +114,13 @@ $(BUILD)/sim/tb_mute.pass: tb/tb_mute.v $(RTL) $(VH) $(BSRAM_SIM)
 	iverilog -g2012 -Wall -Itools -s tb_mute -o $(BUILD)/sim/mute.vvp tb/tb_mute.v $(RTL) $(BSRAM_SIM)
 	vvp $(BUILD)/sim/mute.vvp | tee $(BUILD)/sim/mute.log
 	grep -q "PASS tb_mute" $(BUILD)/sim/mute.log
+	touch $@
+
+$(BUILD)/sim/tb_dsd_srcsel.pass: tb/tb_dsd_srcsel.v dsd_to_pcm.v hb_sample_ram.v $(BSRAM_SIM)
+	mkdir -p $(BUILD)/sim
+	iverilog -g2012 -Wall -Itools -s tb_dsd_srcsel -o $(BUILD)/sim/srcsel.vvp tb/tb_dsd_srcsel.v dsd_to_pcm.v hb_sample_ram.v $(BSRAM_SIM)
+	vvp $(BUILD)/sim/srcsel.vvp | tee $(BUILD)/sim/srcsel.log
+	grep -q "PASS tb_dsd_srcsel" $(BUILD)/sim/srcsel.log
 	touch $@
 
 synth:

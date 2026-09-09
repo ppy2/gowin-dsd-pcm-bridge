@@ -24,7 +24,7 @@ module tb_chatter;
     wire b0, l0, d0;
     top #(.DB_BITS(6)) uut (
         .mclk_in(mclk), .i2s_bclk_in(bclk), .i2s_lrck_in(lrck),
-        .i2s_sdata_in(sdata), .dsd_on(dsd_on),
+        .i2s_sdata_in(sdata), .dsd_on(dsd_on), .dsd_data2_in(1'b0),
         .i2s_bclk_out(b0), .i2s_lrck_out(l0), .i2s_sdata_out(d0)
     );
 

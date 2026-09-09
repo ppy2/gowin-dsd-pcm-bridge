@@ -27,8 +27,9 @@ module top #(
     input  wire i2s_lrck_in,
     input  wire i2s_sdata_in,
     input  wire dsd_on,            // native-DSD enable (Amanero DSD-on)
-    output wire i2s_bclk_out,
-    output wire i2s_lrck_out,
+    input  wire dsd_data2_in,      // dedicated DATA2 pin (transport 2, G10).
+    output wire i2s_bclk_out,      // Amanero-style DATA2-on-LRCLK needs no
+    output wire i2s_lrck_out,      // pin: auto-detect picks the live source
     output wire i2s_sdata_out,
     output wire tda_bck_out,       // TDA1541(A) simultaneous: BCK H5
     output wire tda_le_out,        // LE F5
@@ -146,7 +147,7 @@ module top #(
         .dsd_on(dsd_on),
         .dsd_clk_in(i2s_bclk_in),
         .dsd_data1(i2s_sdata_in),
-        .dsd_data2_alt(1'b0),   // Amanero style: DATA2 rides the LRCLK pin
+        .dsd_data2_alt(dsd_data2_in),   // transport 2 (auto-select in module)
         .lrck_in(i2s_lrck_in),
         .sample_valid(dsd_valid_352),
         .sample_l(dsd_352_l),

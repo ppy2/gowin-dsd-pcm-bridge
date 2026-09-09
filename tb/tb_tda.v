@@ -112,7 +112,7 @@ module tb_tda;
     top #(.DB_BITS(6)) top_i (
         .mclk_in(mclk),
         .i2s_bclk_in(i_bclk), .i2s_lrck_in(i_lrck),
-        .i2s_sdata_in(i_sdata), .dsd_on(1'b0),
+        .i2s_sdata_in(i_sdata), .dsd_on(1'b0), .dsd_data2_in(1'b0),
         .i2s_bclk_out(), .i2s_lrck_out(), .i2s_sdata_out(),
         .tda_bck_out(t_bck), .tda_le_out(t_le),
         .tda_dl_out(t_dl), .tda_dr_out(t_dr)
