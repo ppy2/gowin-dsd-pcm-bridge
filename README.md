@@ -1,4 +1,4 @@
-# FPGA SRC для Tang Primer 25K (GW5A-LV25MG121NC1/I0)
+# FPGA SRC для [Tang Primer 25K](https://wiki.sipeed.com/hardware/en/tang/tang-primer-25k/primer-25k.html) (GW5A-LV25MG121NC1/I0)
 
 ![datapath](docs/block.svg)
 
