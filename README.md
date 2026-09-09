@@ -136,10 +136,8 @@ acquisition + заполнение FIR-окна, PCM — релок детект
 (S24-шкала) + регресс `tb/tb_dsd_round_s32_s24.v` (0, ±1/8…1/2 FS
 проходят без рейла, рейлы насыщаются, полбита круглится вверх).
 
-Удалены из сборки: `lpf_8k_4th_seq.v`, `lpf_8k_4th.v`, `biquad_df1.v`
-(файлы лежат в дереве как референс, в Gowin НЕ добавлять).
-Старые бенчи `tb_biquad.v`, `tb_seq_diff.v` — к удалённому фильтру,
-из `make verify` исключены.
+Тестовый FIR ФНЧ 8 кГц и его бенчи полностью удалены из дерева
+(история git их помнит); в сборке только тракт ниже.
 
 ## Сборка в Gowin IDE (Windows)
 
@@ -150,9 +148,8 @@ acquisition + заполнение FIR-окна, PCM — релок детект
    `dsd_round_s32_s24.v` + КОПИЮ `tools/interp_coefs.vh` рядом с RTL
    (verilog `include). `tools/gowin_sdpb_bb.v` — только для локального
    гейта yosys (blackbox SDPB); в Gowin НЕ добавлять (там свой примитив
-   из библиотеки). `gowin_bsram_sim.v` — только для icarus-симуляции;
-   в Gowin НЕ добавлять. УДАЛИТЬ `lpf_8k_4th_seq.v`, `lpf_8k_4th.v`,
-   `biquad_df1.v`, если есть.
+   из библиотеки). `gowin_bsram_sim.v` — только для icarus-симуляции,
+   в Gowin НЕ добавлять.
    Старый `top.v` заменить целиком.
 3. Констрейнты: `fir.cst` (`dsd_on` G11, `dsd_data2_in` G10,
    `nos_bypass` A10 — все с pull-down; TDA1541: BCK H5, LE F5, DL G7,

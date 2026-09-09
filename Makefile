@@ -11,7 +11,6 @@ BUILD ?= build
 # + a COPY of tools/interp_coefs.vh next to the RTL (verilog `include).
 # tools/gowin_sdpb_bb.v = yosys-gate blackbox ONLY (Gowin has its own
 # SDPB primitive — do NOT add the bb). gowin_bsram_sim.v = icarus ONLY.
-# (REMOVE lpf_8k_4th_seq.v, lpf_8k_4th.v, biquad_df1.v if present).
 RTL := top.v i2s_receiver.v rate_detect.v src_interp.v src_dupdrop.v dither_24_16.v i2s_transmitter.v tda1541_tx.v dsd_to_pcm.v dsd_pcm_decim2.v hb_sample_ram.v dsd_round_s32_s24.v
 VH := tools/interp_coefs.vh
 BB := tools/gowin_sdpb_bb.v
