@@ -9,7 +9,8 @@ module tb_swap_diag;
     reg mclk = 0;
     always #10 mclk = ~mclk; // 20 ns period
 
-    // ---- X1-grid I2S master: frame = 256 mclk, 64 bclk, 32-bit slots ----
+    // ---- X1-grid I2S master: frame = 256 mclk (overall-X2 stimulus @x384),
+    // 64 bclk, 32-bit slots ----
     reg bclk = 0;
     always #40 bclk = ~bclk; // 80 ns period -> 4 mclk per bclk
     reg [5:0] bpos = 6'd0;
@@ -41,7 +42,7 @@ module tb_swap_diag;
         .i2s_bclk_out(b1), .i2s_lrck_out(l1), .i2s_sdata_out(d1)
     );
 
-    reg [15:0] L0[0:3], R0[0:3], L1[0:3], R1[0:3];
+    reg [15:0] L0[0:4], R0[0:4], L1[0:4], R1[0:4];
     integer f, i, bad;
 
     function integer diff16;
@@ -61,7 +62,14 @@ module tb_swap_diag;
                  u1.sw_state, u1.fgain, u1.u_dith.la);
         if (l0 !== l1 || b0 !== b1)
             $display("NOTE grids differ l0=%b l1=%b b0=%b b1=%b", l0, l1, b0, b1);
-        for (f = 0; f < 4; f = f + 1) begin
+        // NOTE (x384): 16-bit slots @MCLK/128 = 32 BCLK/frame. The L loop
+        // below consumes 17 BCLK rises (Philips-delay skip + 16 bits), so
+        // it ends one rise inside the R slot and the `@(posedge l0)` R
+        // sync catches the NEXT frame (old 64-BCLK frames had room, no
+        // spill). R0[f]/R1[f] therefore hold emitted frame f+1 while
+        // L0[f]/L1[f] hold frame f (TX holds prove the streams themselves
+        // are swapped bit-exact). Capture 5, compare with that offset.
+        for (f = 0; f < 5; f = f + 1) begin
             @(negedge l0);
             @(posedge b0); // Philips delay cell
             L0[f] = 16'd0; L1[f] = 16'd0;
@@ -80,21 +88,22 @@ module tb_swap_diag;
             end
         end
         bad = 0;
-        for (f = 0; f < 4; f = f + 1) begin
+        for (f = 0; f < 5; f = f + 1) begin
             $display("frame %0d u0 L=%04h R=%04h | u1 L=%04h R=%04h",
                      f, L0[f], R0[f], L1[f], R1[f]);
             // music present, channels distinct (no 0==0 fake pass)
             if (L0[f][15:4] == 12'd0) begin bad = 1; $display("FAIL zero L"); end
             if (R0[f][15:4] == 12'd0) begin bad = 1; $display("FAIL zero R"); end
             if (L0[f] == R0[f]) begin bad = 1; $display("FAIL L==R"); end
-            // exchange through the swapped instance, +-2 LSB: the two
-            // instances share gain/state/LFSR (printed above), but the
-            // capture window can straddle a dither draw between the two
-            // TX grids; routing is proven by the 0.5-FS-separated channel
-            // patterns tracking across frames (a broken swap fails by
-            // thousands of LSB, not by dither noise).
-            if (diff16(L1[f], R0[f]) > 2) begin bad = 1; $display("FAIL swap L1!=R0"); end
-            if (diff16(R1[f], L0[f]) > 2) begin bad = 1; $display("FAIL swap R1!=L0"); end
+        end
+        // Swap check with the 1-frame R offset (R[f] = emitted f+1):
+        // same emitted frame => same dither word => must match closely.
+        // (Tolerance +-2: routing is proven by the 0.5-FS-separated
+        // channel patterns tracking across frames; a broken swap fails
+        // by thousands of LSB, not by dither noise.)
+        for (f = 0; f < 4; f = f + 1) begin
+            if (diff16(L1[f+1], R0[f]) > 2) begin bad = 1; $display("FAIL swap L1!=R0 f=%0d", f); end
+            if (diff16(R1[f], L0[f+1]) > 2) begin bad = 1; $display("FAIL swap R1!=L0 f=%0d", f); end
         end
         if (bad) $display("FAIL tb_swap_diag");
         else $display("PASS tb_swap_diag");

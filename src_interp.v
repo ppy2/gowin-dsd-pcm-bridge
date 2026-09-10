@@ -41,7 +41,10 @@ module src_interp (
     input  wire signed [23:0] in_l,
     input  wire signed [23:0] in_r,
     input  wire              frame_tick,   // 1-mclk pulse, output frame start
-    input  wire [1:0]        sel,          // 00=D2 01=X1 10=X2 11=X4
+    // sel codes (overall ratio, x384 branch): 00=X1 01=X2 10=X4 11=X8.
+    // The engine serves X2/X4 (X1/X8 fall through to dup/drop); X8 as a
+    // single stage never arrives (top splits it X4+X2 across stages).
+    input  wire [1:0]        sel,
     input  wire              in_idle,
     input  wire              bypass,       // 1: NOS jumper (A10=3V3) — plain
     output wire              out_valid,    // duplicate/drop, engine off
@@ -69,8 +72,8 @@ module src_interp (
         .out_valid(dd_valid), .out_l(dd_l), .out_r(dd_r)
     );
 
-    wire use_engine = ((sel == 2'b10) || (sel == 2'b11)) && !bypass_s;
-    wire [2:0] R = (sel == 2'b11) ? 3'd4 : 3'd2;
+    wire use_engine = ((sel == 2'b01) || (sel == 2'b10)) && !bypass_s;
+    wire [2:0] R = (sel == 2'b10) ? 3'd4 : 3'd2;
 
     // Jumper synchronizer (static config: set before Play — flipping
     // mid-stream clicks by the engine group-delay step; the dd path
@@ -163,7 +166,7 @@ module src_interp (
 
     // Tap index valid (0..30) exactly on the load steps (k<=30, see FSM).
     wire [4:0] tidx = k[4:0];
-    wire [7:0] rom_addr = {(sel == 2'b11), phase, tidx};
+    wire [7:0] rom_addr = {(sel == 2'b10), phase, tidx};
     wire signed [23:0] hist_u = (st == 3'd2) ? $signed(tapL(tidx))
                                              : $signed(tapR(tidx));
 
@@ -207,7 +210,7 @@ module src_interp (
             hR20<=24'sd0;hR21<=24'sd0;hR22<=24'sd0;hR23<=24'sd0;hR24<=24'sd0;
             hR25<=24'sd0;hR26<=24'sd0;hR27<=24'sd0;hR28<=24'sd0;hR29<=24'sd0;
             hR30<=24'sd0;
-            phase <= 2'd0; prev_sel <= 2'b01;
+            phase <= 2'd0; prev_sel <= 2'b00;
             do_push <= 1'b0;
             st <= 3'd0; k <= 6'd0; zero_frame <= 1'b0;
             mb_r <= 24'sd0; co_r <= 32'sd0;
@@ -306,7 +309,7 @@ module src_interp (
                     end else begin
                         mb_r <= hL00;
                     end
-                    co_r <= $signed(interp_rom({(sel == 2'b11), phase, 5'd0}));
+                    co_r <= $signed(interp_rom({(sel == 2'b10), phase, 5'd0}));
                     acc <= 64'sd0;
                     st <= 3'd2;
                 end

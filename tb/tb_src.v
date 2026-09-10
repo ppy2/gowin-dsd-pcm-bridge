@@ -1,10 +1,12 @@
 `timescale 1ns/1ps
-// Stage-1 SRC bench: rate_detect + src_dupdrop, MCLK-ratio matrix.
-// N = input LRCK period in mclk -> sel -> dup/drop properties:
-//   N=128  sel=D2(00): out steps +2/frame (drop every 2nd)
-//   N=256  sel=X1(01): out steps +1/frame (pass)
-//   N=512  sel=X2(10): runs of 2, steps +1  (duplicate)
-//   N=1024 sel=X4(11): runs of 4, steps +1  (duplicate x4)
+// Stage-1 SRC bench: rate_detect + src_dupdrop on the 256-grid.
+// sel codes are stage-LOCAL ratios (00=X1 01=X2 10=X4):
+//   N=256  sel=X1(00): out steps +1/frame (pass)
+//   N=512  sel=X2(01): runs of 2, steps +1  (duplicate)
+//   N=1024 sel=X4(10): runs of 4, steps +1  (duplicate x4)
+// (Overall-X1/N=128 bypasses stage-1 in top — receiver-direct to stage-2 —
+// so N=128 is not a stage-1 operating point and is not tested here.
+// Overall-X8 maps to stage-1 X4, so sel=11 never reaches an instance.)
 // Every frame: out_r == -out_l (pair coherence + channel integrity).
 // Plus: glitch ride-through (one wrong period must not switch sel),
 // idle mute (no LRCK -> zeros, valid still ticking), relock, and X1 at
@@ -21,6 +23,9 @@ module tb_src;
 
     wire [1:0] sel;
     wire idle;
+    // Top maps overall->stage-1-local (s1sel = rate-1); mirror it here so
+    // the dupdrop sees what stage-1 sees in hardware.
+    wire [1:0] ls1 = (sel == 2'b00) ? 2'b00 : sel - 2'b01;
     wire svalid;
     wire signed [23:0] sl, sr;
 
@@ -40,7 +45,7 @@ module tb_src;
 
     src_dupdrop u_src(.clk(clk), .rst_n(rst_n),
         .pair_valid(pv), .in_l(dl), .in_r(dr),
-        .frame_tick(frame_tick), .sel(sel), .in_idle(idle),
+        .frame_tick(frame_tick), .sel(ls1), .in_idle(idle),
         .out_valid(svalid), .out_l(sl), .out_r(sr));
 
     integer err = 0;
@@ -100,7 +105,7 @@ module tb_src;
 
     task check_run;
         input [1:0] want_sel;
-        input integer mode; // 0:+1 1:+2 2:x2 3:x4
+        input integer mode; // 0:+1 2:x2 3:x4
         integer i, step, k, R, ok, expv, fit;
         begin
             wait_sel(want_sel);
@@ -122,10 +127,6 @@ module tb_src;
                 step = $signed(got[i]) - $signed(got[i-1]);
                 if (mode == 0 && step !== 1) begin
                     $display("FAIL: X1 step=%0d at f=%0d", step, i);
-                    err = err + 1;
-                end
-                if (mode == 1 && step !== 2) begin
-                    $display("FAIL: D2 step=%0d at f=%0d", step, i);
                     err = err + 1;
                 end
             end
@@ -158,10 +159,9 @@ module tb_src;
         frame_en = 1'b1;
         repeat (5) @(posedge clk);
 
-        curN = 128;  check_run(2'b00, 1); // D2
-        curN = 256;  check_run(2'b01, 0); // X1
-        curN = 512;  check_run(2'b10, 2); // X2
-        curN = 1024; check_run(2'b11, 3); // X4
+        curN = 256;  check_run(2'b01, 0); // overall X2 -> s1 X1 pass
+        curN = 512;  check_run(2'b10, 2); // overall X4 -> s1 X2 dup
+        curN = 1024; check_run(2'b11, 3); // overall X8 -> s1 X4 dup
 
         // X1 at two more pair/frame phases (locked, arbitrary phase).
         // (poff counts from 1: the c-loop starts at 1.)
@@ -180,19 +180,19 @@ module tb_src;
                 end
         end
         $display("X1 phase0 ok");
-        input_frames(curN, 6, 200);
+        input_frames(curN, 6, 100);
         collect = 1'b1; gcnt = 0;
-        input_frames(curN, 42, 200);
+        input_frames(curN, 42, 100);
         collect = 1'b0;
         begin
             integer i;
             for (i = 2; i < 40; i = i + 1)
                 if ($signed(got[i]) - $signed(got[i-1]) !== 1) begin
-                    $display("FAIL: X1 phase200 step at f=%0d", i);
+                    $display("FAIL: X1 phase100 step at f=%0d", i);
                     err = err + 1;
                 end
         end
-        $display("X1 phase200 ok");
+        $display("X1 phase100 ok");
 
         // Glitch ride-through: one wrong-length period must not switch sel.
         begin

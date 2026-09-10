@@ -15,7 +15,8 @@ module tb_dsd_flood;
     reg dsd_on = 1'b0;
     reg pcm_run = 1'b0;   // 1 = bit-bang PCM I2S frames
 
-    // PCM generator: X1 grid (LRCK=MCLK/256), 32-bit slots, BCLK=MCLK/4.
+    // PCM generator: overall-X2 stimulus (LRCK=MCLK/256 = 192k @49.152;
+    // x384 out is MCLK/128), 32-bit slots, BCLK=MCLK/4.
     // L = +0.5FS DC (0x40000000), R = -0.5FS DC (0xC0000000).
     reg [1:0] bdiv = 2'd0;
     reg [5:0] fpos = 6'd0;
@@ -102,7 +103,7 @@ module tb_dsd_flood;
     reg signed [23:0] acc_l, acc_r;
     integer n;
 
-    // Count src_mux_valid over 512 mclk (expect 2 = 1 pair/256) and
+    // Count src_mux_valid over 512 mclk (expect 4 = 1 pair/128, x384 grid)
     // average the muxed data.
     task sniff_mux;
         output integer valids;
@@ -177,7 +178,7 @@ module tb_dsd_flood;
         repeat (40*256) @(posedge mclk); // rate lock + SRC flush
         sniff_mux(vc, acc_l, acc_r);
         $display("PCM-A: valids=%0d/512 meanL=%0d meanR=%0d", vc, $signed(acc_l), $signed(acc_r));
-        if (vc != 2) begin $display("FAIL: PCM-A rate"); err = err + 1; end
+        if (vc != 4) begin $display("FAIL: PCM-A rate"); err = err + 1; end
         if (!($signed(acc_l) > 4000000)) begin $display("FAIL: PCM-A L not +0.5FS"); err = err + 1; end
         if (!($signed(acc_r) < -4000000)) begin $display("FAIL: PCM-A R not -0.5FS"); err = err + 1; end
 
@@ -214,7 +215,7 @@ module tb_dsd_flood;
         join
         sniff_mux(vc, acc_l, acc_r);
         $display("DSD-B: valids=%0d/512 meanL=%0d meanR=%0d", vc, $signed(acc_l), $signed(acc_r));
-        if (vc != 2) begin $display("FAIL: DSD-B rate"); err = err + 1; end
+        if (vc != 4) begin $display("FAIL: DSD-B rate"); err = err + 1; end
         // Through-top swap (hardware 2026-09-09: transport carries RIGHT
         // on SDATA, LEFT on LRCLK): SDATA=1 must land R=+FS, LRCLK=0 -> L=-FS.
         if (!($signed(acc_l) < -8000000)) begin $display("FAIL: DSD-B L not -FS (swap?)"); err = err + 1; end
@@ -241,7 +242,7 @@ module tb_dsd_flood;
         join
         sniff_mux(vc, acc_l, acc_r);
         $display("PCM-C: valids=%0d/512 meanL=%0d meanR=%0d", vc, $signed(acc_l), $signed(acc_r));
-        if (vc != 2) begin $display("FAIL: PCM-C rate (no resume)"); err = err + 1; end
+        if (vc != 4) begin $display("FAIL: PCM-C rate (no resume)"); err = err + 1; end
         if (!($signed(acc_l) > 4000000)) begin $display("FAIL: PCM-C L not +0.5FS"); err = err + 1; end
         if (!($signed(acc_r) < -4000000)) begin $display("FAIL: PCM-C R not -0.5FS"); err = err + 1; end
 

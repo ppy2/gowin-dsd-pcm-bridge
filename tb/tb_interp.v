@@ -11,7 +11,7 @@ module tb_interp;
     reg rst_n = 1'b0;
     reg pv = 1'b0;
     reg signed [23:0] pl = 24'sd0, pr = 24'sd0;
-    reg [1:0] sel = 2'b01;
+    reg [1:0] sel = 2'b00;
     reg idle = 1'b0;
     reg bypass = 1'b0;
 
@@ -233,7 +233,7 @@ module tb_interp;
             real ph;
 
             // ---------- X4 impulse, L and R, two phases ----------
-            sel = 2'b11;
+            sel = 2'b10;
             stimL[0] = 24'sd1048576; stimR[0] = 24'sd0;
             for (i = 1; i < 40; i = i + 1) begin
                 stimL[i] = 24'sd0; stimR[i] = 24'sd0;
@@ -336,7 +336,7 @@ module tb_interp;
 
             // ---------- X2 impulse + DC (flush X4 step pedestal first) --
             flush(1024, 36);
-            sel = 2'b10;
+            sel = 2'b01;
             stimL[0] = 24'sd1048576; stimR[0] = 24'sd0;
             for (i = 1; i < 40; i = i + 1) begin
                 stimL[i] = 24'sd0; stimR[i] = 24'sd0;
@@ -353,7 +353,7 @@ module tb_interp;
             step_check(2, -8388603);
 
             // ---------- X1 bypass via src_interp ----------
-            sel = 2'b01;
+            sel = 2'b00;
             for (i = 0; i < 14; i = i + 1) begin
                 stimL[i] = i * 1000 + 123; stimR[i] = -(i * 1000 + 123);
             end
@@ -394,7 +394,7 @@ module tb_interp;
             end
 
             // ---------- NOS jumper: X2 bypass = plain duplicate ----------
-            sel = 2'b10;
+            sel = 2'b01;
             bypass = 1'b1;
             for (i = 0; i < 8; i = i + 1) begin
                 stimL[i] = 24'sd0; stimR[i] = 24'sd0;

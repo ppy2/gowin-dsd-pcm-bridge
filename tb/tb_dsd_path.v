@@ -252,11 +252,11 @@ module tb_dsd_path;
                             @(posedge clk); #1;
                             if (top_i.src_mux_valid === 1'b1) vc = vc + 1;
                         end
-                        // exactly 1 pair per 256-mclk frame
-                        if (vc != 2) begin
-                            $display("FAIL: mux valid %0d/512 (want 2)", vc);
+                        // exactly 1 pair per 128-mclk frame (x384 grid)
+                        if (vc != 4) begin
+                            $display("FAIL: mux valid %0d/512 (want 4)", vc);
                             err = err + 1;
-                        end else $display("top mux rate ok (1/256 mclk)");
+                        end else $display("top mux rate ok (1/128 mclk)");
                     end
                     if (top_i.src_mux_l !== 24'h7FFFFF) begin
                         $display("FAIL: top mux L=%0d (want +FS)",

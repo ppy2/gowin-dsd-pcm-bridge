@@ -76,9 +76,10 @@ module tb_tda;
             if (le_seen_data) begin
                 $display("FAIL: LE high during data"); err = err + 1;
             end
-            if (le_on_t < 0 || (le_off_t - le_on_t) < 28
-                || (le_off_t - le_on_t) > 36) begin
-                $display("FAIL: LE pulse on=%0d off=%0d (want 32 wide)",
+            // LE: 4-BCK pulse after data (16 mclk @BCK=MCLK/4)
+            if (le_on_t < 0 || (le_off_t - le_on_t) < 12
+                || (le_off_t - le_on_t) > 20) begin
+                $display("FAIL: LE pulse on=%0d off=%0d (want 16 wide)",
                     le_on_t, le_off_t); err = err + 1;
             end
             if (falls_idle_bck !== 0) begin
@@ -145,9 +146,9 @@ module tb_tda;
         tr = 0; tw_l = 0; tw_r = 0; le_n = 0;
         @(posedge mclk);
         while (top_i.frame_tick !== 1'b1) begin @(posedge mclk); end
-        // 240 cycles: the 16 rises (+4..+124) and LE (+132..164) fit;
-        // the next frame's first rise (+260) stays outside.
-        repeat (240) begin
+        // 100 cycles: the 16 rises (+4..+64) and LE (+68..+84) fit;
+        // the next frame (+128) stays outside.
+        repeat (100) begin
             @(posedge mclk); #1;
             if (t_bck && !t_bck_d) begin
                 tr = tr + 1;

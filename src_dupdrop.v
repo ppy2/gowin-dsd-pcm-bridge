@@ -22,8 +22,8 @@ module src_dupdrop (
     input  wire signed [23:0] in_l,
     input  wire signed [23:0] in_r,
     input  wire              frame_tick,   // 1-mclk pulse, output frame start
-    input  wire [1:0]        sel,          // 00=D2 01=X1 10=X2 11=X4
-    input  wire              in_idle,
+    input  wire [1:0]        sel,          // x384 codes: 00=X1 01=X2 10=X4
+    input  wire              in_idle,      // (11=X8 overall: dup x4 @dd)
     output reg               out_valid,
     output reg  signed [23:0] out_l,
     output reg  signed [23:0] out_r
@@ -33,15 +33,17 @@ module src_dupdrop (
     reg [1:0] prev_sel;
 
     // Latch on fcnt%R==0. R in {1,2,4} all divide the mod-4 counter.
-    wire latch_by_cnt = (sel == 2'b11) ? (fcnt == 2'd0) :
-                        (sel == 2'b10) ? (fcnt[0] == 1'b0) : 1'b1;
+    // sel=11 never arrives (top maps overall-X8 to per-stage X4/X2);
+    // it falls through to latch-every-frame.
+    wire latch_by_cnt = (sel == 2'b10) ? (fcnt == 2'd0) :
+                        (sel == 2'b01) ? (fcnt[0] == 1'b0) : 1'b1;
     wire do_latch = (sel != prev_sel) || latch_by_cnt;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             hold_l <= 24'sd0; hold_r <= 24'sd0;
             fcnt <= 2'd0;
-            prev_sel <= 2'b01;
+            prev_sel <= 2'b00;
             out_valid <= 1'b0;
             out_l <= 24'sd0; out_r <= 24'sd0;
         end else begin

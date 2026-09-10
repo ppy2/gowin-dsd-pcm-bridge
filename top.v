@@ -135,8 +135,16 @@ module top #(
                    (rate_sel == 2'b00) ? rx_l : src_l;
     assign s2_pr = dsd_active ? dsd_l24 :
                    (rate_sel == 2'b00) ? rx_r : src_r;
-    assign s1sel = (rate_sel == 2'b11) ? 2'b11 : rate_sel + 2'b01;
-    assign s2sel = (dsd_active || rate_sel != 2'b00) ? 2'b10 : 2'b01;
+    // Stage-2 idle: PCM idleness mutes, but DSD pairs are live while
+    // dsd_active regardless of the (garbage/static) LRCK pin.
+    wire s2_idle = rate_idle && !dsd_active;
+    // Per-stage sels (stage-local ratio codes 00=X1 01=X2 10=X4):
+    // stage-1 (256-grid): overall X2->X1 passthrough, X4->X2, X8->X4;
+    // overall X1 bypasses stage-1 (receiver-direct to stage-2), s1sel
+    // don't-care (tied X1). Stage-2 (128-grid): always X2 except overall
+    // X1 receiver-direct X1. DSD forces stage-2 X2 (176k->352k leg).
+    assign s1sel = (rate_sel == 2'b00) ? 2'b00 : rate_sel - 2'b01;
+    assign s2sel = (dsd_active || rate_sel != 2'b00) ? 2'b01 : 2'b00;
     src_interp u_src2 (
         .clk(mclk_in),
         .rst_n(rst_n),
@@ -145,7 +153,7 @@ module top #(
         .in_r(s2_pr),
         .frame_tick(frame_tick),
         .sel(s2sel),
-        .in_idle(rate_idle),
+        .in_idle(s2_idle),
         .bypass(nos_bypass),
         .out_valid(s2_valid),
         .out_l(s2_l),
