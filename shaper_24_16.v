@@ -1,26 +1,30 @@
 `timescale 1ns/1ps
 // Stereo S24 -> S16 with 2nd-order FIR error-feedback noise shaping +
-// TPDF-dithered quantizer (drop-in alternative to dither_24_16).
+// dithered quantizer (drop-in alternative to dither_24_16).
 //
 // NTF = (1 - z^-1)^2 (FIR: no poles, unconditionally stable — the worst
 // overload can do is a transient saturation, never a sustained limit
-// cycle). NAIVE theory promises -21 dB in-band (0..20k @176.4/192k).
-// MEASURED on RTL idle dump (brickwall 0..20k, exact band energy):
-//   shaper 0.285 LSB^2 vs plain TPDF 0.051 LSB^2 — +7.4 dB WORSE.
-// Root cause (design-level, RTL is bit-exact): at OSR ~4.8 the full-scale
-// TPDF dither injected at the quantizer passes UNSHAPED and dominates
-// in-band noise; the shaped quantizer part is negligible beside it.
-// Noise shaping pays off with OVERSAMPLING (DF3E runs x8-x32); at our
-// grid a 2nd-order loop with full dither cannot beat flat TPDF.
-// Options: smaller dither (weak linearization, ~-5 dB ceiling), higher
-// order (HF mountain into the TDA I/V), or rate+shaper as one package.
-// As specified here: DO NOT SHIP — kept as a proven-stable 2nd-order
-// EF block + measurement methodology only.
+// cycle).
+// DITH_ATTN: quantizer dither dose. 0 = full TPDF +-1 LSB (legacy, kept
+// for methodology A/B); 1 = half TPDF +-0.5 LSB (ship candidate).
+// Rationale (measured, LPF-calibrated 0..20k @384k — the earlier +7.4 dB
+// "worse than TPDF" number was FFT-sidelobe leakage of the HF mountain
+// through the brickwall-FFT meter, NOT in-band noise; white-noise cal
+// of the LPF meter reads exactly 20/192):
+//   full TPDF: -1.8 dB vs flat TPDF (dither passes unshaped — the classic
+//     EF-dither floor; Wannamaker) | THD -128 | clean tones
+//   half TPDF: -7.8 dB vs flat TPDF | THD -131 | idle/low-level spectra
+//     tone-free (-90/-60 dBFS probes) | HF 1.6x TPDF (0.8 vs 0.5 LSB rms,
+//     negligible for the TDA I/V)
+// Discarded: quarter TPDF (-13.8 dB but thinner linearization — ears must
+// prove half first), NTF-shaped dither (limit-cycle tones, pk/med 16),
+// 3rd-order EF (same dither floor, 2.8x HF — order buys nothing once the
+// flat dither dominates).
 // Loop (per channel, all integer, exact):
 //   safe = x - (x >>> 13)            // same -0.00106 dB headroom as TPDF
 //   u    = safe + (e1 <<< 1) - e2    // e1/e2 = past quantizer errors
-//   uq   = u + tpdf + 128            // tpdf = +-255 triangle (same LFSRs
-//                                    //   and seeds as the proven dither)
+//   uq   = u + tpdf_att + 128        // tpdf_att = full/half triangle from
+//                                    //   the proven LFSRs/seeds
 //   y    = sat16(uq >>> 8)           // SATURATE, never wrap
 //   e    = sat12(uq - (y <<< 8))     // normally +-128 (rounding remainder)
 // dither_24_16 has NO clamp by design (headroom makes it unnecessary);
@@ -33,7 +37,9 @@
 // DC note: mean out = in/256 + ~1 LSB (round-half-up +0.5 plus the EF
 // error mean +0.5 — same sub-LSB class as the proven TPDF's +0.5 bias,
 // inaudible, DAC offsets dominate; TB models it explicitly).
-module shaper_24_16 (
+module shaper_24_16 #(
+    parameter DITH_ATTN = 0   // 0 = full TPDF, 1 = half TPDF (ship)
+) (
     input  wire              clk,
     input  wire              rst_n,
     input  wire              in_valid,
@@ -69,10 +75,15 @@ module shaper_24_16 (
     reg [15:0] la, lb, ra, rb;
     reg signed [11:0] e1l, e2l, e1r, e2r; // past errors, +-2047 saturated
 
-    wire signed [9:0] tpdf_l =
+    wire signed [9:0] tpdf_full_l =
         $signed({2'b00, la[7:0]}) + $signed({2'b00, lb[7:0]}) - 10'sd255;
-    wire signed [9:0] tpdf_r =
+    wire signed [9:0] tpdf_full_r =
         $signed({2'b00, ra[7:0]}) + $signed({2'b00, rb[7:0]}) - 10'sd255;
+    // Half dose: exact arithmetic shift (symmetric, still triangular).
+    wire signed [9:0] tpdf_l = (DITH_ATTN == 0) ? tpdf_full_l
+                                               : (tpdf_full_l >>> 1);
+    wire signed [9:0] tpdf_r = (DITH_ATTN == 0) ? tpdf_full_r
+                                               : (tpdf_full_r >>> 1);
 
     wire signed [23:0] safe_l = in_l - (in_l >>> 13);
     wire signed [23:0] safe_r = in_r - (in_r >>> 13);

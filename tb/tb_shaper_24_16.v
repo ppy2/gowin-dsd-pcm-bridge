@@ -1,6 +1,8 @@
 `timescale 1ns/1ps
-// shaper_24_16 bench: boundedness/stability/DC/no-wrap + dump for the
-// spectral proof (in-band shaped power vs flat TPDF, analyzed offline).
+// shaper_24_16 bench (DITH_ATTN=1 ship dose; ATTN=0 legacy is covered by
+// identical RTL with full dither): boundedness/stability/DC/no-wrap +
+// dump for the spectral proof (in-band shaped power vs flat TPDF,
+// analyzed offline with the calibrated LPF meter).
 // NTF shape itself is proven by the dump FFT, not by asserts here.
 module tb_shaper_24_16;
     reg clk = 1'b0;
@@ -11,7 +13,7 @@ module tb_shaper_24_16;
 
     wire ov;
     wire signed [15:0] ol, orr;
-    shaper_24_16 dut (
+    shaper_24_16 #(.DITH_ATTN(1)) dut (
         .clk(clk), .rst_n(rst_n),
         .in_valid(vld), .in_l(pl), .in_r(pr),
         .out_valid(ov), .out_l(ol), .out_r(orr)
@@ -118,7 +120,7 @@ module tb_shaper_24_16;
             bad = 0; worst = 0;
             sat_y = 0;
             for (n = 0; n < 200000; n = n + 1) begin
-                ph = 6.283185307179586 * 1000.0 * n / 192000.0;
+                ph = 6.283185307179586 * 1000.0 * n / 384000.0;
                 s = $rtoi(4194304.0 * $sin(ph));
                 feed(s, s);
                 if (ol === 16'sd32767 || ol === -16'sd32768) bad = bad + 1;
