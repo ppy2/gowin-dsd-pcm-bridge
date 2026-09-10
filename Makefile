@@ -11,7 +11,7 @@ BUILD ?= build
 # + a COPY of tools/interp_coefs.vh next to the RTL (verilog `include).
 # tools/gowin_sdpb_bb.v = yosys-gate blackbox ONLY (Gowin has its own
 # SDPB primitive — do NOT add the bb). gowin_bsram_sim.v = icarus ONLY.
-RTL := top.v i2s_receiver.v rate_detect.v src_interp.v src_dupdrop.v dither_24_16.v i2s_transmitter.v tda1541_tx.v dsd_to_pcm.v dsd_pcm_decim2.v hb_sample_ram.v dsd_round_s32_s24.v
+RTL := top.v i2s_receiver.v rate_detect.v src_interp.v src_dupdrop.v dither_24_16.v shaper_24_16.v i2s_transmitter.v tda1541_tx.v dsd_to_pcm.v dsd_pcm_decim2.v hb_sample_ram.v dsd_round_s32_s24.v
 VH := tools/interp_coefs.vh
 BB := tools/gowin_sdpb_bb.v
 BSRAM_SIM := gowin_bsram_sim.v
@@ -22,7 +22,7 @@ all: verify
 
 verify: sim synth
 
-sim: $(BUILD)/sim/tb_top.pass $(BUILD)/sim/tb_src.pass $(BUILD)/sim/tb_dither.pass $(BUILD)/sim/tb_interp.pass $(BUILD)/sim/tb_dsd_path.pass $(BUILD)/sim/tb_dsd_round.pass $(BUILD)/sim/tb_dsd_trans.pass $(BUILD)/sim/tb_dsd_flood.pass $(BUILD)/sim/tb_swap_diag.pass $(BUILD)/sim/tb_chatter.pass $(BUILD)/sim/tb_dsd_hostile.pass $(BUILD)/sim/tb_tda.pass $(BUILD)/sim/tb_mute.pass $(BUILD)/sim/tb_dsd_srcsel.pass
+sim: $(BUILD)/sim/tb_top.pass $(BUILD)/sim/tb_src.pass $(BUILD)/sim/tb_dither.pass $(BUILD)/sim/tb_shaper.pass $(BUILD)/sim/tb_interp.pass $(BUILD)/sim/tb_dsd_path.pass $(BUILD)/sim/tb_dsd_round.pass $(BUILD)/sim/tb_dsd_trans.pass $(BUILD)/sim/tb_dsd_flood.pass $(BUILD)/sim/tb_swap_diag.pass $(BUILD)/sim/tb_chatter.pass $(BUILD)/sim/tb_dsd_hostile.pass $(BUILD)/sim/tb_tda.pass $(BUILD)/sim/tb_mute.pass $(BUILD)/sim/tb_dsd_srcsel.pass
 
 $(BUILD)/sim/tb_top.pass: tb/tb_top.v $(RTL) $(VH) $(BSRAM_SIM)
 	mkdir -p $(BUILD)/sim
@@ -50,6 +50,13 @@ $(BUILD)/sim/tb_interp.pass: tb/tb_interp.v src_interp.v src_dupdrop.v dither_24
 	iverilog -g2012 -Wall -Itools -s tb_interp -o $(BUILD)/sim/interp.vvp tb/tb_interp.v src_interp.v src_dupdrop.v
 	vvp $(BUILD)/sim/interp.vvp | tee $(BUILD)/sim/interp.log
 	grep -q "PASS tb_interp" $(BUILD)/sim/interp.log
+	touch $@
+
+$(BUILD)/sim/tb_shaper.pass: tb/tb_shaper_24_16.v shaper_24_16.v
+	mkdir -p $(BUILD)/sim
+	iverilog -g2012 -Wall -s tb_shaper_24_16 -o $(BUILD)/sim/shaper.vvp tb/tb_shaper_24_16.v shaper_24_16.v
+	vvp $(BUILD)/sim/shaper.vvp | tee $(BUILD)/sim/shaper.log
+	grep -q "PASS tb_shaper_24_16" $(BUILD)/sim/shaper.log
 	touch $@
 
 $(BUILD)/sim/tb_dsd_path.pass: tb/tb_dsd_path.v $(RTL) $(VH) $(BSRAM_SIM)

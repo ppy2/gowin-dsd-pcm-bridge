@@ -21,6 +21,12 @@ module top #(
     // DB_BITS: dsd_active debounce window = 2^DB_BITS MCLK (~47 ms @21).
     // Benches override to 6 (identical logic, sims stay fast).
     , parameter DB_BITS = 21
+    // SHAPER: final quantizer select (branch A/B, default = proven TPDF).
+    // 0 = dither_24_16 (flat TPDF, shipping); 1 = shaper_24_16 (2nd-order
+    // FIR error-feedback — MEASURED +7.4 dB worse in-band than TPDF at
+    // our grid, do not ship as specified; see shaper header). Flip only
+    // for a dedicated build + flash + A/B listen, never silently.
+    , parameter SHAPER = 1'b0
 ) (
     input  wire mclk_in,
     input  wire i2s_bclk_in,
@@ -384,10 +390,30 @@ module top #(
         .in_valid(pd_v),
         .in_l(pd_l),
         .in_r(pd_r),
-        .out_valid(dith_valid),
-        .out_l(dith_l),
-        .out_r(dith_r)
+        .out_valid(dth_valid),
+        .out_l(dth_l),
+        .out_r(dth_r)
     );
+
+    // Branch A/B quantizer (SHAPER param): both chains run continuously
+    // (house style — PCM/DSD run in parallel too), the mux only selects.
+    wire sh_valid;
+    wire signed [15:0] sh_l, sh_r;
+    wire dth_valid;
+    wire signed [15:0] dth_l, dth_r;
+    shaper_24_16 u_shaper (
+        .clk(mclk_in),
+        .rst_n(rst_n),
+        .in_valid(pd_v),
+        .in_l(pd_l),
+        .in_r(pd_r),
+        .out_valid(sh_valid),
+        .out_l(sh_l),
+        .out_r(sh_r)
+    );
+    assign dith_valid = SHAPER ? sh_valid : dth_valid;
+    assign dith_l = SHAPER ? sh_l : dth_l;
+    assign dith_r = SHAPER ? sh_r : dth_r;
 
     // Digital-silence auto-mute: the TPDF dither turns driven-zero stops
     // into a +-1 LSB flow (words 0000/FFFF/0001) — visible dirt on the LA,
