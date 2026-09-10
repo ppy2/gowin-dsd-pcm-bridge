@@ -1,16 +1,21 @@
 `timescale 1ns/1ps
-// Tang Primer 25K (GW5A-LV25MG121NC1/I0).
-// PCM: Stage-1 SRC + 16-bit TPDF out (see below).
+// Tang Primer 25K (GW5A-LV25MG121NC1/I0) — x384 branch (TDA1541 ear A/B).
+// PCM: two-stage cascade to MCLK/128 (352.8/384 kHz).
 // DSD (dsd_on high, Amanero-style): DSD64..512 -> dsd_to_pcm (352.8 kHz)
-// -> dsd_pcm_decim2 /2 (176.4 kHz) -> the same TPDF dither + I2S out.
-// DSD requires the 44.1-domain transport clock (MCLK 45.1584 MHz):
-// DSD rates are 44.1-family and the output grid is fixed MCLK/256.
-// I2S in (32b slots) -> rate_detect -> dup/drop to fixed grid -> TPDF
-// dither 24->16 -> I2S out (16b slots).
+// -> dsd_pcm_decim2 /2 (176.4 kHz) -> stage-2 X2 -> the same TPDF dither
+// + I2S/TDA out at 352.8 kHz.
+// I2S in (32b slots) -> rate_detect (overall X1/X2/X4/X8) -> stage-1
+// (X1/X2/X4 @256-grid) -> stage-2 X2 (@128-grid, also serves 352.8/384k
+// receiver-direct pairs and DSD pairs) -> fade envelope -> silence mute
+// -> TPDF dither 24->16 -> I2S/TDA out.
 // ONE image, two domains (ratio logic, MCLK-agnostic):
-//   44.1/88.2/176.4/352.8 kHz @MCLK 45.1584 MHz -> 176.4 kHz out (MCLK/256)
-//   48/96/192/384 kHz @MCLK 49.152 MHz          -> 192 kHz out (MCLK/256)
-// x1 = pass, x2/x4 = duplicate, x8 = drop every 2nd pair.
+//   44.1/88.2/176.4/352.8 kHz @MCLK 45.1584 MHz -> 352.8 kHz out (MCLK/128)
+//   48/96/192/384 kHz @MCLK 49.152 MHz          -> 384 kHz out (MCLK/128)
+// No new coefficients: stage-1 reuses the X1/X2/X4 ROM sets, stage-2 the
+// X2 set (all ratio-normalized, grid-agnostic by construction).
+// TDA1541 simultaneous @384k: BCK stays MCLK/8 (16 BCK/sample = same as
+// @192k), only LE doubles — clocking fits; sample settling 2.6 us TBD
+// by ear/scope.
 // All logic runs on mclk_in. No external reset: power-on reset counter.
 module top #(
     // DIAG_SWAP_TX=1: exchange L/R into the output transmitter (silicon
@@ -58,14 +63,29 @@ module top #(
     wire [1:0] rate_sel;
     wire rate_idle;
 
-    wire frame_tick;
+    wire frame_tick;      // 128-grid (output rate MCLK/128)
+    wire frame_tick_s1;   // 256-grid (stage-1 rate, every other frame)
     wire src_valid;
     wire signed [23:0] src_l;
     wire signed [23:0] src_r;
+    wire s2_valid;
+    wire signed [23:0] s2_l;
+    wire signed [23:0] s2_r;
+    // Stage-2 pair source + per-stage sels (declared here: Verilog sizes
+    // an implicit wire at first use, so these must exist before u_src).
+    wire s2_pv;
+    wire signed [23:0] s2_pl;
+    wire signed [23:0] s2_pr;
+    wire [1:0] s1sel;
+    wire [1:0] s2sel;
 
     wire dith_valid;
     wire signed [15:0] dith_l;
     wire signed [15:0] dith_r;
+    wire dth_valid;
+    wire signed [15:0] dth_l, dth_r;
+    wire sh_valid;
+    wire signed [15:0] sh_l, sh_r;
 
     i2s_receiver u_rx (
         .clk(mclk_in),
@@ -92,13 +112,44 @@ module top #(
         .pair_valid(pair_valid),
         .in_l(rx_l),
         .in_r(rx_r),
-        .frame_tick(frame_tick),
-        .sel(rate_sel),
+        .frame_tick(frame_tick_s1),
+        .sel(s1sel),
         .in_idle(rate_idle),
         .bypass(nos_bypass),
         .out_valid(src_valid),
         .out_l(src_l),
         .out_r(src_r)
+    );
+
+    // ---- stage 2: X2 to the output grid (shared by all sources) ----
+    // PCM <=192k arrives via stage 1; 352.8/384k pairs come straight
+    // from the receiver; DSD S24 pairs come from the decim chain
+    // (with the measured L/R swap). s2sel/s2pair pick per overall class;
+    // DSD forces X2 (rate_detect sees garbage LRCK in DSD mode and may
+    // hold any class). The fade envelope (db-driven) covers switching +
+    // settling exactly as before; the old dsd_active data mux is gone.
+    // (s2_pv/pl/pr, s1sel, s2sel declared with the wires above.)
+    assign s2_pv = dsd_active ? dsd_valid_176 :
+                   (rate_sel == 2'b00) ? pair_valid : src_valid;
+    assign s2_pl = dsd_active ? dsd_r24 :
+                   (rate_sel == 2'b00) ? rx_l : src_l;
+    assign s2_pr = dsd_active ? dsd_l24 :
+                   (rate_sel == 2'b00) ? rx_r : src_r;
+    assign s1sel = (rate_sel == 2'b11) ? 2'b11 : rate_sel + 2'b01;
+    assign s2sel = (dsd_active || rate_sel != 2'b00) ? 2'b10 : 2'b01;
+    src_interp u_src2 (
+        .clk(mclk_in),
+        .rst_n(rst_n),
+        .pair_valid(s2_pv),
+        .in_l(s2_pl),
+        .in_r(s2_pr),
+        .frame_tick(frame_tick),
+        .sel(s2sel),
+        .in_idle(rate_idle),
+        .bypass(nos_bypass),
+        .out_valid(s2_valid),
+        .out_l(s2_l),
+        .out_r(s2_r)
     );
 
     // ---------------- native DSD path (Amanero-style) ----------------
@@ -187,11 +238,14 @@ module top #(
 
     // Measured on hardware (2026-09-09): this transport delivers the RIGHT
     // channel on SDATA and LEFT on LRCLK in DSD mode (opposite of the
-    // DATA1=left assumption in dsd_to_pcm.v). Swapped here so DSD L/R
-    // matches PCM L/R. dsd_to_pcm.v itself stays verbatim with /mnt/sdb/fpga.
-    wire src_mux_valid = dsd_active ? dsd_valid_176 : src_valid;
-    wire signed [23:0] src_mux_l = dsd_active ? dsd_r24 : src_l;
-    wire signed [23:0] src_mux_r = dsd_active ? dsd_l24 : src_r;
+    // DATA1=left assumption in dsd_to_pcm.v). Swapped at the stage-2 pair
+    // mux above so DSD L/R matches PCM L/R. dsd_to_pcm.v itself stays
+    // verbatim with /mnt/sdb/fpga.
+    // Stage-2 output IS the muxed stream (all sources arrive through it);
+    // the fade envelope times settling, so no second data mux is needed.
+    wire src_mux_valid = s2_valid;
+    wire signed [23:0] src_mux_l = s2_l;
+    wire signed [23:0] src_mux_r = s2_r;
 
     // Click-free source switching: a hard music<->silence step is itself
     // a full-scale click, so blanking alone is not enough. Envelope:
@@ -258,11 +312,11 @@ module top #(
         end
     end
 
-    // Frozen source (with the measured DSD L/R swap) + gain.
-    // |fz|*1024>>10 never overflows S24 (worst case -FS maps to -FS).
-    wire signed [23:0] fz_l = mux_frozen ? dsd_r24 : src_l;
-    wire signed [23:0] fz_r = mux_frozen ? dsd_l24 : src_r;
-    wire fz_v = mux_frozen ? dsd_valid_176 : src_valid;
+    // Settled stream (stage-2 output): the envelope guarantees the new
+    // source is settled before ST_IN serves it, so no frozen-side mux.
+    wire signed [23:0] fz_l = src_mux_l;
+    wire signed [23:0] fz_r = src_mux_r;
+    wire fz_v = src_mux_valid;
     // Coast register: the last sample actually emitted to the dither.
     // Fading the live source breaks when the old path collapses mid-ramp
     // (in_idle zeros arrive as *valid* data a few frames after the pins
@@ -397,10 +451,7 @@ module top #(
 
     // Branch A/B quantizer (SHAPER param): both chains run continuously
     // (house style — PCM/DSD run in parallel too), the mux only selects.
-    wire sh_valid;
-    wire signed [15:0] sh_l, sh_r;
-    wire dth_valid;
-    wire signed [15:0] dth_l, dth_r;
+    // (sh_*/dth_* wires declared with the wires above.)
     shaper_24_16 u_shaper (
         .clk(mclk_in),
         .rst_n(rst_n),
@@ -455,7 +506,8 @@ module top #(
         .bclk_out(i2s_bclk_out),
         .lrck_out(i2s_lrck_out),
         .sdata_out(i2s_sdata_out),
-        .frame_tick(frame_tick)
+        .frame_tick(frame_tick),
+        .frame_tick_s1(frame_tick_s1)
     );
 
     // TDA1541(A) simultaneous out: the same post-dither 16-bit pair as
